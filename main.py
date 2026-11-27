@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from fastapi import HTTPException
 import asyncpg
 from dotenv import load_dotenv
+from datetime import date, timedelta
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -83,18 +84,69 @@ async def text_to_speech(text: str = Query(...)):
 @api.get("/api/stats")
 async def get_stats(user_id: int = Query(...)):
     async with db_pool.acquire() as conn:
+        # Всего слов
         total = await conn.fetchval(
             "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id
-        )
+        ) or 0
+
+        # Нужно повторить сегодня
         due = await conn.fetchval(
             "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()",
             user_id
+        ) or 0
+
+        # Streak: последовательные дни с активностью (добавление слов)
+        activity = await conn.fetch(
+            """
+            SELECT DISTINCT DATE(created_at) as day
+            FROM vocabulary
+            WHERE user_id = $1
+            ORDER BY day DESC
+            LIMIT 60
+            """,
+            user_id
         )
+
+        streak = 0
+        if activity:
+            today = date.today()
+            # Проверяем, была ли активность сегодня или вчера
+            last_day = activity[0]['day']
+            if last_day == today or last_day == today - timedelta(days=1):
+                streak = 1
+                for i in range(1, len(activity)):
+                    expected = last_day - timedelta(days=i)
+                    if activity[i]['day'] == expected:
+                        streak += 1
+                    else:
+                        break
+
+        # Прогресс за неделю: слова, добавленные каждый из последних 7 дней
+        week_data = await conn.fetch(
+            """
+            SELECT DATE(created_at) as day, COUNT(*) as count
+            FROM vocabulary
+            WHERE user_id = $1 AND created_at >= now() - INTERVAL '7 days'
+            GROUP BY DATE(created_at)
+            ORDER BY day
+            """,
+            user_id
+        )
+
+        weekly = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            count = next((r['count'] for r in week_data if r['day'] == day), 0)
+            weekly.append({
+                'day': day.strftime('%d.%m'),
+                'count': count
+            })
+
         return {
-            "total": total or 0,
-            "due_today": due or 0,
-            "streak": 0,
-            "weekly": []
+            "total": total,
+            "due_today": due,
+            "streak": streak,
+            "weekly": weekly
         }
 
 @api.get("/api/vocabulary")
