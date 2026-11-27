@@ -1,0 +1,10 @@
+aiogram==3.15.0
+edge-tts
+aiosqlite
+openai
+apscheduler
+fastapi
+uvicorn
+python-dotenv
+aiohttp
+socksio

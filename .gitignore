@@ -1,0 +1,30 @@
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# База данных (создастся на сервере автоматически)
+bot_database.db
+
+# Переменные окружения (ключи!)
+.env
+
+# Сгенерированные аудио
+voice_*.ogg
+voice_*.mp3
+*.mp3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS
+.DS_Store
+Thumbs.db
