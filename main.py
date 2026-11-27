@@ -40,6 +40,9 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
+@api.get("/health")
+async def health_check():
+    return {"status": "ok", "time": datetime.now().isoformat()}
 
 @api.get("/api/tts")
 async def text_to_speech(text: str = Query(...)):
@@ -492,7 +495,8 @@ async def send_daily_reminders():
 
 
 async def run_api():
-    config = uvicorn.Config(api, host="127.0.0.1", port=8000, log_level="info")
+    port = int(os.environ.get("PORT", 8000))  # Render даёт свой порт через $PORT
+    config = uvicorn.Config(api, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 
