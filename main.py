@@ -79,6 +79,13 @@ async def text_to_speech(text: str = Query(...)):
 
         asyncio.create_task(cleanup())
 
+@api.get("/api/stats")
+async def get_stats(user_id: int = Query(...)):
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id)
+        due = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()", user_id)
+        return {"total": total, "due_today": due}
+
 @api.get("/api/vocabulary")
 async def get_vocabulary(user_id: int = Query(...)):
     async with db_pool.acquire() as conn:
@@ -303,9 +310,12 @@ async def process_and_reply(message: types.Message, user_id: int, prompt_text: s
         await save_message(user_id, "assistant", cleaned)
 
         if is_translation and word_to_save:
-            # Сохраняем только первую строку ответа как короткий перевод
-            short_translation = response_text.split('\n')[0][:100].strip().rstrip('.,;:!?-')
-            await save_word(user_id, word_to_save, short_translation)
+            first = cleaned.split('\n')[0].strip().rstrip('.,;:!?-')
+            m = re.search(r'[가-힣]+', first)
+            korean = m.group(0) if m else word_to_save  # фолбэк, если модель кривит
+            parts = re.split(r'\s*[—–-]\s*', first, maxsplit=1)
+            translation = parts[1].strip() if len(parts) > 1 else first
+            await save_word(user_id, korean, translation[:100])
 
         try:
             await message.answer(to_html(cleaned), parse_mode="HTML")
@@ -472,10 +482,10 @@ async def translate_word_handler(message: types.Message, state: FSMContext) -> N
     user_text = message.text
     await state.clear()
 
-    # Формируем промпт для модели
     prompt = (
         f"Ученик попросил перевести слово: '{user_text}'. "
-        f"В ПЕРВОЙ СТРОКЕ напиши только короткий перевод (1-3 слова). "
+        f"В ПЕРВОЙ СТРОКЕ напиши ТОЛЬКО формат: корейское_слово — перевод. "
+        f"Например: 가족 — семья. Никаких транскрипций в первой строке. "
         f"Со второй строки дай развёрнутое объяснение и пример."
     )
 
