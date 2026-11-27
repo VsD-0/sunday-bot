@@ -170,7 +170,12 @@ async def init_db():
     """Инициализация пула подключений к Supabase."""
     global db_pool
     database_url = os.getenv("DATABASE_URL")
-    db_pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+    db_pool = await asyncpg.create_pool(
+        database_url + "?sslmode=require",
+        min_size=2,
+        max_size=10,
+        server_settings={'jit': 'off'}
+    )
     logging.info("Подключение к Supabase установлено.")
 
 async def get_db():
@@ -522,7 +527,7 @@ async def send_daily_reminders():
 
 
 async def run_api():
-    port = int(os.environ.get("PORT", 8000))  # Render даёт свой порт через $PORT
+    port = int(os.environ.get("PORT", 8000))  # Render задаёт PORT автоматически
     config = uvicorn.Config(api, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
