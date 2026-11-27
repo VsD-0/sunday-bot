@@ -79,12 +79,72 @@ async def text_to_speech(text: str = Query(...)):
 
         asyncio.create_task(cleanup())
 
+
 @api.get("/api/stats")
 async def get_stats(user_id: int = Query(...)):
     async with db_pool.acquire() as conn:
-        total = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id)
-        due = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()", user_id)
-        return {"total": total, "due_today": due}
+        # Всего слов
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id
+        )
+
+        # Нужно повторить сегодня
+        due = await conn.fetchval(
+            "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()",
+            user_id
+        )
+
+        # Streak: считаем последовательные дни с активностью
+        # Берём последние даты, когда пользователь добавлял/повторял слова
+        activity_dates = await conn.fetch(
+            """
+            SELECT DISTINCT DATE(created_at) as activity_date 
+            FROM vocabulary 
+            WHERE user_id = $1 
+            ORDER BY activity_date DESC
+            LIMIT 30
+            """,
+            user_id
+        )
+
+        streak = 0
+        if activity_dates:
+            today = datetime.date.today()
+            last_date = activity_dates[0]['activity_date']
+            if last_date == today or last_date == today - datetime.timedelta(days=1):
+                streak = 1
+                for i in range(1, len(activity_dates)):
+                    expected = last_date - datetime.timedelta(days=i)
+                    if activity_dates[i]['activity_date'] == expected:
+                        streak += 1
+                    else:
+                        break
+
+        # Прогресс за неделю: количество слов, добавленных каждый день
+        week_data = await conn.fetch(
+            """
+            SELECT DATE(created_at) as day, COUNT(*) as count
+            FROM vocabulary
+            WHERE user_id = $1 AND created_at >= now() - INTERVAL '7 days'
+            GROUP BY DATE(created_at)
+            ORDER BY day
+            """,
+            user_id
+        )
+
+        # Формируем массив из 7 дней (даже если дней нет — будет 0)
+        weekly = []
+        for i in range(6, -1, -1):
+            day = today - datetime.timedelta(days=i)
+            count = next((r['count'] for r in week_data if r['day'] == day), 0)
+            weekly.append({'day': day.strftime('%d.%m'), 'count': count})
+
+        return {
+            "total": total,
+            "due_today": due,
+            "streak": streak,
+            "weekly": weekly
+        }
 
 @api.get("/api/vocabulary")
 async def get_vocabulary(user_id: int = Query(...)):
