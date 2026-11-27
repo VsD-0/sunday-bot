@@ -81,16 +81,15 @@ async def text_to_speech(text: str = Query(...)):
 
 @api.get("/api/vocabulary")
 async def get_vocabulary(user_id: int = Query(...)):
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute(
-                "SELECT word, translation, next_review FROM vocabulary WHERE user_id = ? ORDER BY id DESC LIMIT 20",
-                (user_id,)
-        ) as cursor:
-            rows = await cursor.fetchall()
-    return [
-        {"word": w, "translation": t, "next_review": str(nr)}
-        for w, t, nr in rows
-    ]
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT word, translation, next_review FROM vocabulary WHERE user_id = $1 ORDER BY id DESC LIMIT 20",
+            user_id
+        )
+        return [
+            {"word": r["word"], "translation": r["translation"], "next_review": str(r["next_review"])}
+            for r in rows
+        ]
 
 # --- ПОДКЛЮЧЕНИЕ К ЛОКАЛЬНОЙ OLLAMA ---
 # client = AsyncOpenAI(base_url='http://localhost:11434/v1', api_key='ollama')
