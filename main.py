@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from fastapi.responses import FileResponse
 from fastapi import HTTPException
+import asyncpg
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -162,38 +163,64 @@ def to_html(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
-# --- БАЗА ДАННЫХ (без изменений) ---
-async def init_db():
-    async with aiosqlite.connect("bot_database.db") as db:
-        await db.execute(
-            "CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-        await db.execute(
-            "CREATE TABLE IF NOT EXISTS vocabulary (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, word TEXT, translation TEXT, interval INTEGER DEFAULT 1, next_review DATETIME, UNIQUE(user_id, word))")
-        await db.commit()
+# Глобальный пул подключений
+db_pool = None
 
+async def init_db():
+    """Инициализация пула подключений к Supabase."""
+    global db_pool
+    database_url = os.getenv("DATABASE_URL")
+    db_pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
+    logging.info("Подключение к Supabase установлено.")
+
+async def get_db():
+    """Получить соединение из пула."""
+    async with db_pool.acquire() as conn:
+        yield conn
 
 async def save_message(user_id: int, role: str, content: str):
-    async with aiosqlite.connect("bot_database.db") as db:
-        await db.execute("INSERT INTO history (user_id, role, content) VALUES (?, ?, ?)", (user_id, role, content))
-        await db.commit()
-
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO history (user_id, role, content) VALUES ($1, $2, $3)",
+            user_id, role, content
+        )
 
 async def get_history_messages(user_id: int, limit: int = 10) -> list:
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute("SELECT role, content FROM history WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-                              (user_id, limit)) as cursor:
-            rows = await cursor.fetchall()
-            rows.reverse()
-            return [{"role": r, "content": c} for r, c in rows]
-
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT role, content FROM history WHERE user_id = $1 ORDER BY id DESC LIMIT $2",
+            user_id, limit
+        )
+        rows.reverse()
+        return [{"role": r["role"], "content": r["content"]} for r in rows]
 
 async def save_word(user_id: int, word: str, translation: str):
     next_review = datetime.now() + timedelta(days=1)
-    async with aiosqlite.connect("bot_database.db") as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO vocabulary (user_id, word, translation, interval, next_review) VALUES (?, ?, ?, ?, ?)",
-            (user_id, word.strip(), translation.strip(), 1, next_review))
-        await db.commit()
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO vocabulary (user_id, word, translation, interval, next_review) 
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT (user_id, word) DO NOTHING""",
+            user_id, word.strip(), translation.strip(), 1, next_review
+        )
+
+async def get_due_words(user_id: int):
+    now = datetime.now()
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, word, translation FROM vocabulary WHERE user_id = $1 AND next_review <= $2",
+            user_id, now
+        )
+        return [(r["id"], r["word"], r["translation"]) for r in rows]
+
+async def update_srs(user_id: int, word_id: int, current_interval: int, is_correct: bool):
+    new_interval = current_interval * 2 if is_correct else 1
+    next_review = datetime.now() + timedelta(days=new_interval)
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE vocabulary SET interval = $1, next_review = $2 WHERE id = $3 AND user_id = $4",
+            new_interval, next_review, word_id, user_id
+        )
 
 
 # --- ЛОГИКА SRS ---
@@ -500,34 +527,13 @@ async def run_api():
     server = uvicorn.Server(config)
     await server.serve()
 
-
 async def main() -> None:
     await init_db()
-    await clean_vocabulary_once()
-    scheduler.add_job(send_daily_reminders, 'cron', hour=19, minute=0)
+    scheduler.add_job(send_daily_reminders, trigger='cron', hour=19, minute=0)
     scheduler.start()
     logging.info("Бот и API запущены.")
-    await asyncio.gather(dp.start_polling(bot), run_api())
 
-async def clean_vocabulary_once():
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute("SELECT id, word, translation FROM vocabulary") as cursor:
-            rows = await cursor.fetchall()
-        for row_id, word, translation in rows:
-            # Если в колонке "word" есть текст "Ученик попросил" — это ошибка
-            if "Ученик попросил" in word or len(word) > 50:
-                # Пытаемся извлечь слово из translation (оно там есть в начале)
-                import re
-                match = re.search(r'[가-힣]+', translation)
-                if match:
-                    korean_word = match.group(0)
-                    short_trans = translation.split('\n')[0][:100].strip().rstrip('.,;:!?-')
-                    await db.execute(
-                        "UPDATE vocabulary SET word = ?, translation = ? WHERE id = ?",
-                        (korean_word, short_trans, row_id)
-                    )
-        await db.commit()
-    logging.info("Словарь очищен.")
+    await asyncio.gather(dp.start_polling(bot), run_api())
 
 if __name__ == "__main__":
     asyncio.run(main())
