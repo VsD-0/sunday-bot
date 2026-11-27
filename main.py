@@ -171,7 +171,7 @@ async def init_db():
     global db_pool
     database_url = os.getenv("DATABASE_URL")
     db_pool = await asyncpg.create_pool(
-        database_url + "?sslmode=require",
+        database_url,
         min_size=2,
         max_size=10,
         server_settings={'jit': 'off'}
