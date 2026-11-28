@@ -1,78 +1,103 @@
+"""
+Корейский репетитор — Telegram бот с Mini App
+Архитектура:
+- Бэкенд: FastAPI + aiogram
+- База данных: Supabase PostgreSQL (asyncpg)
+- LLM: Groq API (qwen3.8-27b)
+- TTS: edge_tts (ko-KR-SunHiNeural)
+- Распознавание речи: Groq Whisper API
+- Хостинг: Render.com
+- Фронтенд: GitHub Pages (Mini App)
+"""
+
 import asyncio
 import logging
 import re
 import os
 import uuid
+import tempfile
 import edge_tts
-import aiosqlite
-from datetime import datetime, timedelta
-from aiogram import Bot, Dispatcher, types, F  # <-- Добавили F для фильтров
+from datetime import datetime, timedelta, date
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart, StateFilter
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
 from openai import AsyncOpenAI
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
 from fastapi.responses import FileResponse
-from fastapi import HTTPException
+import uvicorn
 import asyncpg
 from dotenv import load_dotenv
-from datetime import date, timedelta
-load_dotenv()
 
+load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
+# ============================================
+# 1. КОНФИГУРАЦИЯ
+# ============================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MODEL_NAME = "openai/gpt-oss-120b"
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+scheduler = AsyncIOScheduler()
 
-# --- FASTAPI ДЛЯ MINI APP ---
+# ============================================
+# 2. FASTAPI (Mini App)
+# ============================================
 api = FastAPI()
-# Разрешаем запросы с GitHub Pages и локальных тестов
 api.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Для продакшена лучше указать конкретный URL GitHub Pages
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Глобальный пул подключений к Supabase
+db_pool = None
+
+
+async def init_db():
+    """Инициализация пула подключений к Supabase."""
+    global db_pool
+    database_url = os.getenv("DATABASE_URL")
+    db_pool = await asyncpg.create_pool(
+        database_url + "?sslmode=require",
+        min_size=2,
+        max_size=10,
+        server_settings={'jit': 'off'}
+    )
+    logging.info("Подключение к Supabase установлено.")
+
+
+# --- Health Check ---
 @api.get("/health")
 async def health_check():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
+
+# --- TTS (озвучка) ---
 @api.get("/api/tts")
 async def text_to_speech(text: str = Query(...)):
-    """Генерирует аудио для корейского текста и возвращает файл."""
-    import tempfile
-
-    # Создаём временный файл
+    """Генерирует аудио для корейского текста."""
     with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmp:
         tmp_path = tmp.name
 
     try:
-        # Генерируем аудио через edge_tts
         voice = "ko-KR-SunHiNeural"
         communicate = edge_tts.Communicate(text, voice, rate="-20%")
         await communicate.save(tmp_path)
-
-        # Возвращаем файл
-        return FileResponse(
-            tmp_path,
-            media_type="audio/mpeg",
-            filename=f"tts_{text}.mp3"
-        )
+        return FileResponse(tmp_path, media_type="audio/mpeg", filename=f"tts_{text}.mp3")
     except Exception as e:
         logging.error(f"TTS error: {e}")
         raise HTTPException(status_code=500, detail="Ошибка генерации аудио")
     finally:
-        # Удаляем файл после отправки (через 10 секунд, чтобы успеть отправить)
-        import asyncio
         async def cleanup():
             await asyncio.sleep(10)
             if os.path.exists(tmp_path):
@@ -81,76 +106,10 @@ async def text_to_speech(text: str = Query(...)):
         asyncio.create_task(cleanup())
 
 
-@api.get("/api/stats")
-async def get_stats(user_id: int = Query(...)):
-    async with db_pool.acquire() as conn:
-        # Всего слов
-        total = await conn.fetchval(
-            "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id
-        ) or 0
-
-        # Нужно повторить сегодня
-        due = await conn.fetchval(
-            "SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()",
-            user_id
-        ) or 0
-
-        # Streak: последовательные дни с активностью (добавление слов)
-        activity = await conn.fetch(
-            """
-            SELECT DISTINCT DATE(created_at) as day
-            FROM vocabulary
-            WHERE user_id = $1
-            ORDER BY day DESC
-            LIMIT 60
-            """,
-            user_id
-        )
-
-        streak = 0
-        if activity:
-            today = date.today()
-            # Проверяем, была ли активность сегодня или вчера
-            last_day = activity[0]['day']
-            if last_day == today or last_day == today - timedelta(days=1):
-                streak = 1
-                for i in range(1, len(activity)):
-                    expected = last_day - timedelta(days=i)
-                    if activity[i]['day'] == expected:
-                        streak += 1
-                    else:
-                        break
-
-        # Прогресс за неделю: слова, добавленные каждый из последних 7 дней
-        week_data = await conn.fetch(
-            """
-            SELECT DATE(created_at) as day, COUNT(*) as count
-            FROM vocabulary
-            WHERE user_id = $1 AND created_at >= now() - INTERVAL '7 days'
-            GROUP BY DATE(created_at)
-            ORDER BY day
-            """,
-            user_id
-        )
-
-        weekly = []
-        for i in range(6, -1, -1):
-            day = today - timedelta(days=i)
-            count = next((r['count'] for r in week_data if r['day'] == day), 0)
-            weekly.append({
-                'day': day.strftime('%d.%m'),
-                'count': count
-            })
-
-        return {
-            "total": total,
-            "due_today": due,
-            "streak": streak,
-            "weekly": weekly
-        }
-
+# --- Словарь ---
 @api.get("/api/vocabulary")
 async def get_vocabulary(user_id: int = Query(...)):
+    """Возвращает последние 20 слов пользователя."""
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT word, translation, next_review FROM vocabulary WHERE user_id = $1 ORDER BY id DESC LIMIT 20",
@@ -161,25 +120,106 @@ async def get_vocabulary(user_id: int = Query(...)):
             for r in rows
         ]
 
-# --- ПОДКЛЮЧЕНИЕ К ЛОКАЛЬНОЙ OLLAMA ---
-# client = AsyncOpenAI(base_url='http://localhost:11434/v1', api_key='ollama')
-# MODEL_NAME = "gemma3:4b"
 
-# --- ПОДКЛЮЧЕНИЕ К GROQ API
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# --- Карточки (для Mini App) ---
+@api.get("/api/due-words")
+async def get_due_words_api(user_id: int = Query(...)):
+    """Возвращает слова для повторения (next_review <= now())."""
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, word, translation, interval, next_review FROM vocabulary WHERE user_id = $1 AND next_review <= now() ORDER BY next_review ASC LIMIT 20",
+            user_id
+        )
+        return [
+            {
+                "id": r["id"],
+                "word": r["word"],
+                "translation": r["translation"],
+                "interval": r["interval"],
+                "next_review": str(r["next_review"])
+            }
+            for r in rows
+        ]
+
+
+@api.post("/api/update-srs")
+async def update_srs_api(data: dict):
+    """Обновляет интервал повторения после ответа на карточке."""
+    user_id = data.get("user_id")
+    word_id = data.get("word_id")
+    is_correct = data.get("is_correct")
+
+    if not all([user_id, word_id, is_correct is not None]):
+        raise HTTPException(status_code=400, detail="Missing parameters")
+
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT interval FROM vocabulary WHERE id = $1 AND user_id = $2",
+            word_id, user_id
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Word not found")
+
+        current_interval = row["interval"] or 1
+        new_interval = min(current_interval * 2, 30) if is_correct else 1
+        next_review = datetime.now() + timedelta(days=new_interval)
+
+        await conn.execute(
+            "UPDATE vocabulary SET interval = $1, next_review = $2 WHERE id = $3 AND user_id = $4",
+            new_interval, next_review, word_id, user_id
+        )
+
+        return {"success": True, "new_interval": new_interval}
+
+
+# --- Статистика ---
+@api.get("/api/stats")
+async def get_stats(user_id: int = Query(...)):
+    """Возвращает статистику обучения."""
+    async with db_pool.acquire() as conn:
+        total = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1", user_id) or 0
+        due = await conn.fetchval("SELECT COUNT(*) FROM vocabulary WHERE user_id = $1 AND next_review <= now()",
+                                  user_id) or 0
+
+        # Streak
+        activity = await conn.fetch(
+            "SELECT DISTINCT DATE(created_at) as day FROM vocabulary WHERE user_id = $1 ORDER BY day DESC LIMIT 60",
+            user_id
+        )
+        streak = 0
+        if activity:
+            today = date.today()
+            last_day = activity[0]['day']
+            if last_day == today or last_day == today - timedelta(days=1):
+                streak = 1
+                for i in range(1, len(activity)):
+                    expected = last_day - timedelta(days=i)
+                    if activity[i]['day'] == expected:
+                        streak += 1
+                    else:
+                        break
+
+        # Прогресс за неделю
+        week_data = await conn.fetch(
+            "SELECT DATE(created_at) as day, COUNT(*) as count FROM vocabulary WHERE user_id = $1 AND created_at >= now() - INTERVAL '7 days' GROUP BY DATE(created_at) ORDER BY day",
+            user_id
+        )
+        weekly = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            count = next((r['count'] for r in week_data if r['day'] == day), 0)
+            weekly.append({'day': day.strftime('%d.%m'), 'count': count})
+
+        return {"total": total, "due_today": due, "streak": streak, "weekly": weekly}
+
+
+# ============================================
+# 3. GROQ API (LLM)
+# ============================================
 client = AsyncOpenAI(
     base_url='https://api.groq.com/openai/v1',
     api_key=GROQ_API_KEY
 )
-MODEL_NAME = "openai/gpt-oss-120b"
-
-scheduler = AsyncIOScheduler()
-
-
-class BotStates(StatesGroup):
-    waiting_for_translation = State()
-    waiting_for_quiz_answer = State()
-
 
 SYSTEM_PROMPT = (
     "Ты — ИИ-репетитор корейского для русскоязычного новичка. Пиши объяснения ТОЛЬКО НА РУССКОМ. "
@@ -193,20 +233,24 @@ SYSTEM_PROMPT = (
     "ты НЕ ИМЕЕШЬ ПРАВА писать 'почти' — хвали ученика и давай следующее слово."
 )
 
+# ============================================
+# 4. УТИЛИТЫ ДЛЯ ОБРАБОТКИ ТЕКСТА
+# ============================================
 HANGUL = '가-힣㄰-㆏'
 HANGUL_RE = re.compile(f'[{HANGUL}]+')
 
+
 def strip_tts_garbage(text: str) -> str:
-    """Вырезаем и правильные теги, и мусор вида [TT5a], [ttss], [/TTS]."""
+    """Вырезаем теги [TTS] и мусор вида [TT5a]."""
     text = re.sub(r'\[/?TTS\]', '', text, flags=re.I)
-    text = re.sub(r'\[[A-Za-z0-9/]{1,12}\]', '', text)   # битые [TT5a], [TT56]...
+    text = re.sub(r'\[[A-Za-z0-9/]{1,12}\]', '', text)
     text = re.sub(r'\bttss?\b', '', text, flags=re.I)
-    text = re.sub(r'\s*/\s*(?=\s|$)', '', text)          # хвосты вида "a/"
+    text = re.sub(r'\s*/\s*(?=\s|$)', '', text)
     return text
 
 
 def extract_voice(text: str) -> str:
-    """Слово для озвучки: сначала из тегов (на всякий случай), потом — сами ищем хангыль."""
+    """Извлекает слово для озвучки."""
     m = re.findall(r'\[TTS\](.*?)\[/TTS\]', text, flags=re.I)
     if m:
         return m[-1].strip()
@@ -215,51 +259,40 @@ def extract_voice(text: str) -> str:
     if m:
         return m.group(1)
     runs = HANGUL_RE.findall(cleaned)
-    if len(runs) > 4:      # это список букв (алфавит) — озвучивать нечего
+    if len(runs) > 4:
         return ''
     return runs[-1] if runs else ''
 
+
 def strip_model_tags(text: str) -> str:
-    """Удаляем HTML-теги, которые модель вставила сама (копирует из истории/весов),
-    оставляя текст внутри них."""
+    """Удаляет HTML-теги, которые модель вставила сама."""
     return re.sub(r'</?[a-zA-Z][^>]*>', '', text)
 
+
 def to_html(text: str) -> str:
-    text = strip_model_tags(text)                       # 1) сначала вырезаем чужие <b>
-    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')  # 2) экранируем то, что осталось
-    text = HANGUL_RE.sub(lambda m: f'<b>{m.group(0)}</b>', text)  # 3) добавляем СВОИ теги
+    """Форматирует текст для Telegram (выделяет хангыль жирным)."""
+    text = strip_model_tags(text)
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    text = HANGUL_RE.sub(lambda m: f'<b>{m.group(0)}</b>', text)
     text = re.sub(r'[ \t]+\n', '\n', text)
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
-# Глобальный пул подключений
-db_pool = None
 
-async def init_db():
-    """Инициализация пула подключений к Supabase."""
-    global db_pool
-    database_url = os.getenv("DATABASE_URL")
-    db_pool = await asyncpg.create_pool(
-        database_url,
-        min_size=2,
-        max_size=10,
-        server_settings={'jit': 'off'}
-    )
-    logging.info("Подключение к Supabase установлено.")
-
-async def get_db():
-    """Получить соединение из пула."""
-    async with db_pool.acquire() as conn:
-        yield conn
-
+# ============================================
+# 5. РАБОТА С БАЗОЙ ДАННЫХ (Supabase)
+# ============================================
 async def save_message(user_id: int, role: str, content: str):
+    """Сохраняет сообщение в историю."""
     async with db_pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO history (user_id, role, content) VALUES ($1, $2, $3)",
             user_id, role, content
         )
 
+
 async def get_history_messages(user_id: int, limit: int = 10) -> list:
+    """Получает последние сообщения из истории."""
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT role, content FROM history WHERE user_id = $1 ORDER BY id DESC LIMIT $2",
@@ -268,7 +301,9 @@ async def get_history_messages(user_id: int, limit: int = 10) -> list:
         rows.reverse()
         return [{"role": r["role"], "content": r["content"]} for r in rows]
 
+
 async def save_word(user_id: int, word: str, translation: str):
+    """Сохраняет новое слово в словарь."""
     next_review = datetime.now() + timedelta(days=1)
     async with db_pool.acquire() as conn:
         await conn.execute(
@@ -278,16 +313,20 @@ async def save_word(user_id: int, word: str, translation: str):
             user_id, word.strip(), translation.strip(), 1, next_review
         )
 
+
 async def get_due_words(user_id: int):
+    """Получает слова для повторения (для бота)."""
     now = datetime.now()
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, word, translation FROM vocabulary WHERE user_id = $1 AND next_review <= $2",
+            "SELECT id, word, translation, interval FROM vocabulary WHERE user_id = $1 AND next_review <= $2",
             user_id, now
         )
-        return [(r["id"], r["word"], r["translation"]) for r in rows]
+        return [(r["id"], r["word"], r["translation"], r["interval"]) for r in rows]
+
 
 async def update_srs(user_id: int, word_id: int, current_interval: int, is_correct: bool):
+    """Обновляет интервал повторения (для бота)."""
     new_interval = current_interval * 2 if is_correct else 1
     next_review = datetime.now() + timedelta(days=new_interval)
     async with db_pool.acquire() as conn:
@@ -297,37 +336,11 @@ async def update_srs(user_id: int, word_id: int, current_interval: int, is_corre
         )
 
 
-# --- ЛОГИКА SRS ---
-async def get_due_words(user_id: int):
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute("SELECT id, word, translation FROM vocabulary WHERE user_id = ? AND next_review <= ?",
-                              (user_id, now)) as cursor:
-            return await cursor.fetchall()
-
-
-async def update_srs(user_id: int, word_id: int, current_interval: int, is_correct: bool):
-    async with aiosqlite.connect("bot_database.db") as db:
-        new_interval = current_interval * 2 if is_correct else 1
-        next_review = datetime.now() + timedelta(days=new_interval)
-        await db.execute("UPDATE vocabulary SET interval = ?, next_review = ? WHERE id = ? AND user_id = ?",
-                         (new_interval, next_review.strftime('%Y-%m-%d %H:%M:%S'), word_id, user_id))
-        await db.commit()
-
-
-# --- ФУНКЦИИ БОТА ---
-def get_main_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📖 Перевод слова"), KeyboardButton(text="🗣 Объясни грамматику")],
-            [KeyboardButton(text="💬 Режим диалога"), KeyboardButton(text="🎲 Случайное слово")],
-            [KeyboardButton(text="📚 Мои слова"), KeyboardButton(text="🔄 Повторить слова")]
-        ],
-        resize_keyboard=True
-    )
-
-
+# ============================================
+# 6. ГЕНЕРАЦИЯ ГОЛОСА
+# ============================================
 async def generate_voice(text: str) -> str:
+    """Генерирует аудиофайл через edge_tts."""
     voice = "ko-KR-SunHiNeural"
     filename = f"voice_{uuid.uuid4().hex}.mp3"
     communicate = edge_tts.Communicate(text, voice, rate="-20%")
@@ -335,7 +348,12 @@ async def generate_voice(text: str) -> str:
     return filename
 
 
-async def process_and_reply(message: types.Message, user_id: int, prompt_text: str, is_translation: bool = False, word_to_save: str = None):
+# ============================================
+# 7. ОБРАБОТКА СООБЩЕНИЙ (LLM)
+# ============================================
+async def process_and_reply(message: types.Message, user_id: int, prompt_text: str, is_translation: bool = False,
+                            word_to_save: str = None):
+    """Отправляет запрос к LLM и обрабатывает ответ."""
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         history = await get_history_messages(user_id, limit=6)
@@ -355,7 +373,6 @@ async def process_and_reply(message: types.Message, user_id: int, prompt_text: s
             )
             response_text = response.choices[0].message.content
 
-            # Если просили слово, а хангыля нет — перегенерируем
             if re.search(r'скажи слово|повтори', response_text, re.I) and not HANGUL_RE.search(response_text):
                 logging.warning(f"Попытка {attempt + 1}: нет хангыля. Перегенерация...")
                 prompt_text = ("ОШИБКА. Ты не написал корейское слово хангылем! "
@@ -364,7 +381,6 @@ async def process_and_reply(message: types.Message, user_id: int, prompt_text: s
             break
 
         voice_text = extract_voice(response_text)
-
         cleaned = strip_tts_garbage(response_text)
         cleaned = strip_model_tags(cleaned)
         cleaned = cleaned.replace("*", "").replace("`", "")
@@ -375,7 +391,7 @@ async def process_and_reply(message: types.Message, user_id: int, prompt_text: s
         if is_translation and word_to_save:
             first = cleaned.split('\n')[0].strip().rstrip('.,;:!?-')
             m = re.search(r'[가-힣]+', first)
-            korean = m.group(0) if m else word_to_save  # фолбэк, если модель кривит
+            korean = m.group(0) if m else word_to_save
             parts = re.split(r'\s*[—–-]\s*', first, maxsplit=1)
             translation = parts[1].strip() if len(parts) > 1 else first
             await save_word(user_id, korean, translation[:100])
@@ -396,7 +412,136 @@ async def process_and_reply(message: types.Message, user_id: int, prompt_text: s
         await message.answer("Извини, что-то пошло не так. Попробуй ещё раз через пару секунд.")
 
 
-# --- ОБРАБОТЧИК ГОЛОСОВЫХ СООБЩЕНИЙ (НОВЫЙ) ---
+# ============================================
+# 8. FSM STATES
+# ============================================
+class BotStates(StatesGroup):
+    waiting_for_translation = State()
+    waiting_for_quiz_answer = State()
+
+
+# ============================================
+# 9. КЛАВИАТУРА
+# ============================================
+def get_main_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📖 Перевод слова"), KeyboardButton(text="🗣 Объясни грамматику")],
+            [KeyboardButton(text="💬 Режим диалога"), KeyboardButton(text="🎲 Случайное слово")],
+            [KeyboardButton(text="📚 Мои слова"), KeyboardButton(text="🔄 Повторить слова")]
+        ],
+        resize_keyboard=True
+    )
+
+
+# ============================================
+# 10. ОБРАБОТЧИКИ КОМАНД И КНОПОК
+# ============================================
+@dp.message(CommandStart())
+async def command_start_handler(message: types.Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        f"Привет, {message.from_user.full_name}! 👋\n"
+        "Теперь я умею <b>понимать твою речь</b>! Нажми на микрофон и скажи что-нибудь по-корейски или по-русски.",
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard()
+    )
+
+
+@dp.message(lambda msg: msg.text == "📖 Перевод слова")
+async def start_translation(message: types.Message, state: FSMContext):
+    await state.set_state(BotStates.waiting_for_translation)
+    await message.answer("Напишите слово (на русском или корейском), которое хотите перевести.")
+
+
+@dp.message(StateFilter(BotStates.waiting_for_translation))
+async def translate_word_handler(message: types.Message, state: FSMContext) -> None:
+    user_text = message.text
+    await state.clear()
+
+    prompt = (
+        f"Ученик попросил перевести слово: '{user_text}'. "
+        f"В ПЕРВОЙ СТРОКЕ напиши ТОЛЬКО формат: корейское_слово — перевод. "
+        f"Например: 가족 — семья. Никаких транскрипций в первой строке. "
+        f"Со второй строки дай развёрнутое объяснение и пример."
+    )
+
+    await process_and_reply(message, message.from_user.id, prompt, is_translation=True, word_to_save=user_text)
+
+
+@dp.message(lambda msg: msg.text == "📚 Мои слова")
+async def my_words_handler(message: types.Message):
+    user_id = message.from_user.id
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT word, translation, next_review FROM vocabulary WHERE user_id = $1 ORDER BY id DESC LIMIT 15",
+            user_id
+        )
+    if not rows:
+        await message.answer("Твой словарь пока пуст.")
+    else:
+        text = "📚 <b>Твои слова:</b>\n\n"
+        for r in rows:
+            text += f"• <b>{r['word']}</b> — {r['translation'][:30]}... (след. повтор: {str(r['next_review'])[:10]})\n"
+        await message.answer(text, parse_mode="HTML")
+
+
+@dp.message(lambda msg: msg.text == "🔄 Повторить слова")
+async def start_quiz(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Запускаю карточки...")
+    await send_next_quiz(message, message.from_user.id)
+
+
+async def send_next_quiz(message: types.Message, user_id: int):
+    due_words = await get_due_words(user_id)
+    if not due_words:
+        await message.answer("🎉 На сегодня всё! Все слова повторены.", reply_markup=get_main_keyboard())
+        return
+    word_id, word, translation, interval = due_words[0]
+    await message.answer(f"Переведи на русский:\n\n👉 <b>{word}</b>", parse_mode="HTML")
+    await dp.storage.set_state(chat_id=message.chat.id, user_id=user_id, state=BotStates.waiting_for_quiz_answer)
+    await dp.storage.update_data(chat_id=message.chat.id, user_id=user_id,
+                                 data={'word_id': word_id, 'translation': translation, 'interval': interval})
+
+
+@dp.message(StateFilter(BotStates.waiting_for_quiz_answer))
+async def quiz_answer_handler(message: types.Message, state: FSMContext):
+    user_answer = message.text.lower().strip()
+    data = await state.get_data()
+
+    if user_answer in data['translation'].lower() or data['translation'].lower() in user_answer:
+        await message.answer("✅ <b>Правильно!</b> Молодец!")
+        await update_srs(message.from_user.id, data['word_id'], data['interval'], is_correct=True)
+    else:
+        await message.answer(f"❌ <b>Ошибка.</b> Правильный ответ:\n{data['translation']}")
+        await update_srs(message.from_user.id, data['word_id'], data['interval'], is_correct=False)
+
+    await state.clear()
+    await send_next_quiz(message, message.from_user.id)
+
+
+@dp.message()
+async def chat_handler(message: types.Message, state: FSMContext) -> None:
+    """Обработчик обычных сообщений."""
+    user_id = message.from_user.id
+    user_text = message.text
+    if not user_text:
+        return
+
+    if user_text == "🗣 Объясни грамматику":
+        user_text = "Ученик хочет разобрать грамматику. Предложи популярную тему для начинающих и объясни ее."
+    elif user_text == "💬 Режим диалога":
+        user_text = "Давай устроим диалог на корейском! Начни с простой фразы на корейском, напиши перевод и жди моего ответа."
+    elif user_text == "🎲 Случайное слово":
+        user_text = "Дай мне одно полезное случайное корейское слово на сегодня. Напиши его на корейском, транскрипцию, перевод и пример."
+
+    await process_and_reply(message, user_id, user_text)
+
+
+# ============================================
+# 11. ГОЛОСОВЫЕ СООБЩЕНИЯ
+# ============================================
 @dp.message(F.voice)
 async def voice_message_handler(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
@@ -409,12 +554,12 @@ async def voice_message_handler(message: types.Message, state: FSMContext):
 
     try:
         # Получаем последнюю фразу бота
-        async with aiosqlite.connect("bot_database.db") as db:
-            async with db.execute(
-                "SELECT content FROM history WHERE user_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
-                (user_id,)) as cursor:
-                row = await cursor.fetchone()
-                last_bot_text = row[0][:250] if row else ""
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT content FROM history WHERE user_id = $1 AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+                user_id
+            )
+            last_bot_text = row['content'][:250] if row else ""
 
         logging.info("Распознавание речи через Groq Whisper API...")
 
@@ -434,7 +579,7 @@ async def voice_message_handler(message: types.Message, state: FSMContext):
 
         await message.answer(f"🎤 <i>Я услышал:</i> {recognized_text}", parse_mode="HTML")
 
-        # --- ЛОГИКА ПРОВЕРКИ (без изменений) ---
+        # Логика проверки
         target_word = ""
         word_match = re.search(rf'(?:слово|повтори)[^가-힣ㄱ-ㅎㅏ-ㅣ]*?([가-힣ㄱ-ㅎㅏ-ㅣ]+)', last_bot_text)
         if word_match:
@@ -472,145 +617,45 @@ async def voice_message_handler(message: types.Message, state: FSMContext):
             os.remove(file_path)
 
 
-# --- ХЕНДЛЕРЫ КНОПОК (без изменений) ---
-@dp.message(CommandStart())
-async def command_start_handler(message: types.Message, state: FSMContext) -> None:
-    await state.clear()
-    await message.answer(
-        f"Привет, {message.from_user.full_name}! 👋\n"
-        "Теперь я умею <b>понимать твою речь</b>! Нажми на микрофон и скажи что-нибудь по-корейски или по-русски.",
-        parse_mode="HTML",
-        reply_markup=get_main_keyboard()
-    )
-
-
-@dp.message(StateFilter(BotStates.waiting_for_quiz_answer))
-async def quiz_answer_handler(message: types.Message, state: FSMContext):
-    user_answer = message.text.lower().strip()
-    data = await state.get_data()
-
-    if user_answer in data['translation'].lower() or data['translation'].lower() in user_answer:
-        await message.answer("✅ <b>Правильно!</b> Молодец!")
-        await update_srs(message.from_user.id, data['word_id'], data['interval'], is_correct=True)
-    else:
-        await message.answer(f"❌ <b>Ошибка.</b> Правильный ответ:\n{data['translation']}")
-        await update_srs(message.from_user.id, data['word_id'], data['interval'], is_correct=False)
-
-    await state.clear()
-    await send_next_quiz(message, message.from_user.id)
-
-
-async def send_next_quiz(message: types.Message, user_id: int):
-    due_words = await get_due_words(user_id)
-    if not due_words:
-        await message.answer("🎉 На сегодня всё! Все слова повторены.", reply_markup=get_main_keyboard())
-        return
-    word_id, word, translation = due_words[0]
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute("SELECT interval FROM vocabulary WHERE id = ?", (word_id,)) as cursor:
-            row = await cursor.fetchone()
-            interval = row[0] if row else 1
-    await message.answer(f"Переведи на русский:\n\n👉 <b>{word}</b>", parse_mode="HTML")
-    await dp.storage.set_state(chat_id=message.chat.id, user_id=user_id, state=BotStates.waiting_for_quiz_answer)
-    await dp.storage.update_data(chat_id=message.chat.id, user_id=user_id,
-                                 data={'word_id': word_id, 'translation': translation, 'interval': interval})
-
-
-@dp.message(lambda msg: msg.text == "🔄 Повторить слова")
-async def start_quiz(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Запускаю карточки...")
-    await send_next_quiz(message, message.from_user.id)
-
-
-@dp.message(lambda msg: msg.text == "📚 Мои слова")
-async def my_words_handler(message: types.Message):
-    user_id = message.from_user.id
-    async with aiosqlite.connect("bot_database.db") as db:
-        async with db.execute(
-                "SELECT word, translation, next_review FROM vocabulary WHERE user_id = ? ORDER BY id DESC LIMIT 15",
-                (user_id,)) as cursor:
-            words = await cursor.fetchall()
-    if not words:
-        await message.answer("Твой словарь пока пуст.")
-    else:
-        text = "📚 <b>Твои слова:</b>\n\n"
-        for w, t, nr in words:
-            text += f"• <b>{w}</b> — {t[:30]}... (след. повтор: {nr[:10]})\n"
-        await message.answer(text, parse_mode="HTML")
-
-
-@dp.message(StateFilter(BotStates.waiting_for_translation))
-async def translate_word_handler(message: types.Message, state: FSMContext) -> None:
-    user_text = message.text
-    await state.clear()
-
-    prompt = (
-        f"Ученик попросил перевести слово: '{user_text}'. "
-        f"В ПЕРВОЙ СТРОКЕ напиши ТОЛЬКО формат: корейское_слово — перевод. "
-        f"Например: 가족 — семья. Никаких транскрипций в первой строке. "
-        f"Со второй строки дай развёрнутое объяснение и пример."
-    )
-
-    # Передаём исходное слово отдельно
-    await process_and_reply(
-        message,
-        message.from_user.id,
-        prompt,
-        is_translation=True,
-        word_to_save=user_text  # <-- вот это важно!
-    )
-
-
-@dp.message()
-async def chat_handler(message: types.Message, state: FSMContext) -> None:
-    user_id = message.from_user.id
-    user_text = message.text
-    if not user_text: return
-
-    if user_text == "📖 Перевод слова":
-        await state.set_state(BotStates.waiting_for_translation)
-        await message.answer("Напишите слово (на русском или корейском), которое хотите перевести.")
-        return
-    elif user_text == "🗣 Объясни грамматику":
-        user_text = "Ученик хочет разобрать грамматику. Предложи популярную тему для начинающих и объясни ее."
-    elif user_text == "💬 Режим диалога":
-        user_text = "Давай устроим диалог на корейском! Начни с простой фразы на корейском, напиши перевод и жди моего ответа."
-    elif user_text == "🎲 Случайное слово":
-        user_text = "Дай мне одно полезное случайное корейское слово на сегодня. Напиши его на корейском, транскрипцию, перевод и пример."
-
-    await process_and_reply(message, user_id, user_text)
-
-
-# --- НАПОМИНАНИЯ ---
+# ============================================
+# 12. НАПОМИНАНИЯ
+# ============================================
 async def send_daily_reminders():
-    async with aiosqlite.connect("bot_database.db") as db:
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        async with db.execute("SELECT DISTINCT user_id FROM vocabulary WHERE next_review <= ?", (now,)) as cursor:
-            users = await cursor.fetchall()
-    for (user_id,) in users:
+    """Отправляет напоминания о повторении слов."""
+    async with db_pool.acquire() as conn:
+        rows = await conn.fetch("SELECT DISTINCT user_id FROM vocabulary WHERE next_review <= now()")
+        users = [r['user_id'] for r in rows]
+
+    for user_id in users:
         try:
             due_words = await get_due_words(user_id)
             if due_words:
                 await bot.send_message(user_id, f"🔔 <b>Пора повторить корейский!</b>\nНажми «🔄 Повторить слова».",
                                        parse_mode="HTML")
         except Exception as e:
-            logging.error(f"Ошибка отправки: {e}")
+            logging.error(f"Ошибка отправки напоминания: {e}")
 
 
+# ============================================
+# 13. ЗАПУСК
+# ============================================
 async def run_api():
-    port = int(os.environ.get("PORT", 8000))  # Render задаёт PORT автоматически
+    """Запускает FastAPI сервер."""
+    port = int(os.environ.get("PORT", 8000))
     config = uvicorn.Config(api, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 
+
 async def main() -> None:
+    """Главная функция запуска."""
     await init_db()
     scheduler.add_job(send_daily_reminders, trigger='cron', hour=19, minute=0)
     scheduler.start()
     logging.info("Бот и API запущены.")
 
     await asyncio.gather(dp.start_polling(bot), run_api())
+
 
 if __name__ == "__main__":
     asyncio.run(main())

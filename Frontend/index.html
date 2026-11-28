@@ -6,7 +6,11 @@
     <title>Корейский репетитор</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        /* ============================================ */
+        /* 1. ПЕРЕМЕННЫЕ ТЕМ (СВЕТЛАЯ / ТЁМНАЯ) */
+        /* ============================================ */
         :root {
+            /* Светлая тема (по умолчанию) */
             --tg-theme-bg-color: #ffffff;
             --tg-theme-text-color: #000000;
             --tg-theme-hint-color: #888888;
@@ -15,6 +19,21 @@
             --tg-theme-button-color: #2481cc;
             --tg-theme-button-text-color: #ffffff;
         }
+
+        [data-theme="dark"] {
+            /* Тёмная тема */
+            --tg-theme-bg-color: #17212b;
+            --tg-theme-text-color: #ffffff;
+            --tg-theme-hint-color: #708499;
+            --tg-theme-link-color: #5288c1;
+            --tg-theme-secondary-bg-color: #232e3c;
+            --tg-theme-button-color: #5288c1;
+            --tg-theme-button-text-color: #ffffff;
+        }
+
+        /* ============================================ */
+        /* 2. БАЗОВЫЕ ЭЛЕМЕНТЫ */
+        /* ============================================ */
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--tg-theme-bg-color, #ffffff);
@@ -24,9 +43,17 @@
             padding-bottom: 80px;
         }
         h2 { margin-top: 0; font-size: 20px; }
-        h3 { font-size: 16px; color: var(--tg-theme-hint-color); margin: 16px 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        h3 {
+            font-size: 16px;
+            color: var(--tg-theme-hint-color);
+            margin: 16px 0 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
 
-        /* Табы */
+        /* ============================================ */
+        /* 3. НАВИГАЦИЯ (ТАБЫ) */
+        /* ============================================ */
         .tabs {
             display: flex;
             gap: 8px;
@@ -36,9 +63,11 @@
             background: var(--tg-theme-bg-color);
             padding: 8px 0;
             z-index: 10;
+            overflow-x: auto;
         }
         .tab {
             flex: 1;
+            min-width: 80px;
             padding: 10px;
             border: none;
             border-radius: 10px;
@@ -48,26 +77,68 @@
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
+            white-space: nowrap;
         }
         .tab.active {
             background: var(--tg-theme-button-color);
             color: var(--tg-theme-button-text-color);
         }
 
-        /* Секции */
+        /* ============================================ */
+        /* 4. СЕКЦИИ И АНИМАЦИИ ПЕРЕКЛЮЧЕНИЯ */
+        /* ============================================ */
         .section { display: none; }
-        .section.active { display: block; }
+        .section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
 
-        /* Таблица словаря */
+        /* Анимация появления при обычном переключении таба */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Анимация при свайпе влево (следующий таб) */
+        .section.slide-left { animation: slideLeft 0.3s ease; }
+        @keyframes slideLeft {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* Анимация при свайпе вправо (предыдущий таб) */
+        .section.slide-right { animation: slideRight 0.3s ease; }
+        @keyframes slideRight {
+            from { opacity: 0; transform: translateX(-30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ============================================ */
+        /* 5. СЕКЦИЯ 1: СЛОВАРЬ (таблица + поиск) */
+        /* ============================================ */
         table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 15px; }
-        th { text-align: left; color: var(--tg-theme-hint-color); font-weight: 600; padding: 8px 4px; border-bottom: 1px solid var(--tg-theme-hint-color); }
+        th {
+            text-align: left;
+            color: var(--tg-theme-hint-color);
+            font-weight: 600;
+            padding: 8px 4px;
+            border-bottom: 1px solid var(--tg-theme-hint-color);
+        }
         td { padding: 12px 4px; border-bottom: 1px solid var(--tg-theme-secondary-bg-color); }
         .kr-word { font-weight: bold; font-size: 1.1em; color: var(--tg-theme-link-color); }
         .date { font-size: 0.85em; color: var(--tg-theme-hint-color); }
+        .roman {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color);
+            font-weight: 400;
+            letter-spacing: 0.3px;
+        }
         .loading, .empty { text-align: center; color: var(--tg-theme-hint-color); margin-top: 40px; }
         .error { color: #e74c3c; text-align: center; margin-top: 40px; }
 
-        /* Хангыль */
+        /* ============================================ */
+        /* 6. СЕКЦИЯ 2: ХАНГЫЛЬ (сетка букв) */
+        /* ============================================ */
         .hangul-group { margin-bottom: 20px; }
         .hangul-grid {
             display: grid;
@@ -91,25 +162,102 @@
         .hangul-card .symbol { font-size: 28px; font-weight: bold; display: block; margin-bottom: 4px; }
         .hangul-card .name { font-size: 11px; color: var(--tg-theme-hint-color); display: block; }
         .hangul-card .sound { font-size: 12px; font-weight: 600; color: var(--tg-theme-link-color); display: block; margin-top: 2px; }
-        .hangul-card:active .name, .hangul-card:active .sound { color: inherit; opacity: 0.8; }
+        .hangul-card:active .name,
+        .hangul-card:active .sound { color: inherit; opacity: 0.8; }
 
-        /* Правила чтения */
+        /* ============================================ */
+        /* 7. СЕКЦИЯ 3: КАРТОЧКИ (flashcards) */
+        /* ============================================ */
+        .cards-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+        }
+        .cards-progress {
+            text-align: center;
+            margin-bottom: 16px;
+            font-size: 14px;
+            color: var(--tg-theme-hint-color);
+        }
+        .flashcard-wrapper {
+            perspective: 1000px;
+            width: 100%;
+            max-width: 320px;
+            height: 280px;
+            margin-bottom: 24px;
+        }
+        .flashcard {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            /* touch-action: none; ← включите, если добавите свайп карточек через attachSwipe */
+        }
+        .flashcard.flipped { transform: rotateY(180deg); }
+        .flashcard-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden; /* важно для iOS WebView */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .flashcard-back { transform: rotateY(180deg); }
+        .flashcard-word {
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--tg-theme-link-color);
+            text-align: center;
+            margin-bottom: 12px;
+        }
+        .flashcard-roman { font-size: 16px; color: var(--tg-theme-hint-color); margin-bottom: 16px; }
+        .flashcard-hint { font-size: 14px; color: var(--tg-theme-hint-color); margin-top: 16px; }
+        .flashcard-translation { font-size: 24px; color: var(--tg-theme-text-color); text-align: center; }
+        .card-controls {
+            display: flex;
+            gap: 16px;
+            width: 100%;
+            max-width: 320px;
+        }
+        .card-btn {
+            flex: 1;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .card-btn:active { transform: scale(0.95); }
+        .card-btn.wrong { background: #e74c3c; color: white; }
+        .card-btn.correct { background: #27ae60; color: white; }
+        .cards-empty { text-align: center; padding: 40px 20px; color: var(--tg-theme-hint-color); }
+        .cards-empty .emoji { font-size: 48px; margin-bottom: 16px; }
+
+        /* ============================================ */
+        /* 8. СЕКЦИЯ 4: ПРАВИЛА ЧТЕНИЯ */
+        /* ============================================ */
         .rule-card {
             background: var(--tg-theme-secondary-bg-color);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 12px;
         }
-        .rule-card h4 {
-            margin: 0 0 8px 0;
-            font-size: 16px;
-            color: var(--tg-theme-link-color);
-        }
-        .rule-card p {
-            margin: 0 0 8px 0;
-            font-size: 14px;
-            line-height: 1.5;
-        }
+        .rule-card h4 { margin: 0 0 8px 0; font-size: 16px; color: var(--tg-theme-link-color); }
+        .rule-card p { margin: 0 0 8px 0; font-size: 14px; line-height: 1.5; }
         .rule-card .example {
             background: var(--tg-theme-bg-color);
             padding: 8px 12px;
@@ -117,28 +265,385 @@
             font-size: 13px;
             margin-top: 8px;
         }
-        .rule-card .example .kr {
+        .rule-card .example .kr { font-weight: bold; color: var(--tg-theme-link-color); font-size: 15px; }
+
+        /* ============================================ */
+        /* 9. СЕКЦИЯ 5: ГРАММАТИКА */
+        /* ============================================ */
+        .grammar-card {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .grammar-card h4 { margin: 0 0 8px 0; font-size: 16px; color: var(--tg-theme-link-color); }
+        .grammar-card p { margin: 0 0 8px 0; font-size: 14px; line-height: 1.5; }
+        .grammar-card .pattern {
+            background: var(--tg-theme-bg-color);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            margin: 6px 0;
+            display: inline-block;
+        }
+        .grammar-card .example {
+            background: var(--tg-theme-bg-color);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        .grammar-card .example .kr { font-weight: bold; color: var(--tg-theme-link-color); font-size: 15px; }
+        .grammar-card .example-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .grammar-card .example-row:last-child { margin-bottom: 0; }
+        .grammar-card .note {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        /* ============================================ */
+        /* 10. СЕКЦИЯ 6: ФРАЗЫ */
+        /* ============================================ */
+        .phrase-category { margin-bottom: 20px; }
+        .phrase-category h3 {
+            font-size: 16px;
+            color: var(--tg-theme-link-color);
+            margin: 0 0 12px 0;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .phrase-card {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .phrase-text { flex: 1; min-width: 0; }
+        .phrase-kr { font-size: 16px; font-weight: bold; color: var(--tg-theme-link-color); margin-bottom: 2px; }
+        .phrase-roman { font-size: 12px; color: var(--tg-theme-hint-color); margin-bottom: 2px; }
+        .phrase-ru { font-size: 13px; color: var(--tg-theme-text-color); }
+        .phrase-speak { flex-shrink: 0; }
+
+        /* ============================================ */
+        /* 11. СЕКЦИЯ 7: ТЕСТЫ И КВИЗЫ */
+        /* ============================================ */
+        .quiz-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 0;
+        }
+        .quiz-progress {
+            width: 100%;
+            height: 6px;
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 3px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .quiz-progress-bar {
+            height: 100%;
+            background: var(--tg-theme-button-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .quiz-question {
+            font-size: 24px;
             font-weight: bold;
             color: var(--tg-theme-link-color);
-            font-size: 15px;
+            text-align: center;
+            margin-bottom: 8px;
+            min-height: 36px;
         }
+        .quiz-hint {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color);
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .quiz-options {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .quiz-option {
+            background: var(--tg-theme-secondary-bg-color);
+            color: var(--tg-theme-text-color);
+            border: 2px solid transparent;
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: left;
+        }
+        .quiz-option:active { transform: scale(0.98); }
+        .quiz-option.correct { background: #27ae60; color: white; border-color: #27ae60; }
+        .quiz-option.wrong { background: #e74c3c; color: white; border-color: #e74c3c; }
+        .quiz-option:disabled { cursor: default; opacity: 0.8; }
+        .quiz-start-btn, .quiz-restart-btn {
+            background: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+            border: none;
+            border-radius: 12px;
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .quiz-result { text-align: center; padding: 20px; }
+        .quiz-result .score {
+            font-size: 48px;
+            font-weight: bold;
+            color: var(--tg-theme-button-color);
+            margin: 16px 0;
+        }
+        .quiz-result .message { font-size: 18px; margin-bottom: 24px; }
+
+        /* ============================================ */
+        /* 12. СЕКЦИЯ 8: ЕЖЕДНЕВНЫЙ ЧЕЛЛЕНДЖ */
+        /* ============================================ */
+        .challenge-widget {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            color: white;
+        }
+        .challenge-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .challenge-title { font-size: 18px; font-weight: bold; }
+        .challenge-points {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .challenge-progress {
+            background: rgba(255,255,255,0.3);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .challenge-progress-bar {
+            height: 100%;
+            background: white;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .challenge-task {
+            background: rgba(255,255,255,0.15);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .challenge-task-label { font-size: 12px; opacity: 0.8; margin-bottom: 8px; }
+        .challenge-task-text { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+        .challenge-task-hint { font-size: 13px; opacity: 0.9; }
+        .challenge-btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 12px;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        .challenge-btn:active { transform: scale(0.98); }
+        .challenge-btn:disabled { opacity: 0.6; cursor: default; }
+        .challenge-complete { text-align: center; padding: 20px; }
+        .challenge-complete .emoji { font-size: 48px; margin-bottom: 12px; }
+        .challenge-reward {
+            background: rgba(255,215,0,0.3);
+            border: 2px solid gold;
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 12px;
+            text-align: center;
+        }
+        .challenge-reward .points { font-size: 24px; font-weight: bold; color: gold; }
+
+        /* ============================================ */
+        /* 13. СЕКЦИЯ 9: СТАТИСТИКА */
+        /* ============================================ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--tg-theme-button-color);
+            display: block;
+            margin-bottom: 4px;
+        }
+        .stat-card .label { font-size: 13px; color: var(--tg-theme-hint-color); }
+        .stat-card.streak .value { color: #ff6b35; }
+
+        /* График за неделю */
+        .chart-container {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+        .chart-container h3 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .chart {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            height: 120px;
+            gap: 8px;
+        }
+        .chart-bar {
+            flex: 1;
+            background: var(--tg-theme-button-color);
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            position: relative;
+            transition: height 0.3s;
+        }
+        .chart-bar .day {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            color: var(--tg-theme-hint-color);
+        }
+        .chart-bar .count {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--tg-theme-text-color);
+        }
+
+        /* ============================================ */
+        /* 14. ОБЩИЕ КОМПОНЕНТЫ (используются в нескольких секциях) */
+        /* ============================================ */
+        /* Кнопка озвучки — ЕДИНСТВЕННАЯ версия (была дублирована!) */
+        .speak-btn {
+            background: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+            border: none;
+            border-radius: 50%;
+            width: 34px;
+            height: 34px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .speak-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .speak-btn:active { transform: scale(0.9); }
+        .speak-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ============================================ */
+        /* 15. ПЕРЕОПРЕДЕЛЕНИЯ ДЛЯ ТЁМНОЙ ТЕМЫ */
+        /* (в конце — за счёт специфичности [data-theme="dark"] */
+        /*  перекрывают базовые стили) */
+        /* ============================================ */
+        [data-theme="dark"] .hangul-card,
+        [data-theme="dark"] .rule-card,
+        [data-theme="dark"] .grammar-card,
+        [data-theme="dark"] .phrase-card,
+        [data-theme="dark"] .stat-card,
+        [data-theme="dark"] .chart-container {
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        [data-theme="dark"] .rule-card .example,
+        [data-theme="dark"] .grammar-card .example,
+        [data-theme="dark"] .grammar-card .pattern {
+            background: var(--tg-theme-bg-color);
+        }
+        [data-theme="dark"] table th { border-bottom-color: var(--tg-theme-hint-color); }
+        [data-theme="dark"] table td { border-bottom-color: var(--tg-theme-secondary-bg-color); }
+        [data-theme="dark"] input[type="text"] {
+            background: var(--tg-theme-secondary-bg-color);
+            color: var(--tg-theme-text-color);
+            border-color: var(--tg-theme-hint-color);
+        }
+        [data-theme="dark"] input[type="text"]::placeholder { color: var(--tg-theme-hint-color); }
     </style>
 </head>
 <body>
-    <!-- Табы переключения -->
+    <!-- ============================================ -->
+    <!-- НАВИГАЦИЯ: ТАБЫ ПЕРЕКЛЮЧЕНИЯ СЕКЦИЙ -->
+    <!-- ============================================ -->
     <div class="tabs">
         <button class="tab active" data-section="vocab">📚 Мои слова</button>
         <button class="tab" data-section="hangul">🔤 Хангыль</button>
+        <button class="tab" data-section="cards">🎴 Карточки</button>
         <button class="tab" data-section="rules">📖 Правила</button>
+        <button class="tab" data-section="grammar">📝 Грамматика</button>
+        <button class="tab" data-section="phrases">✈️ Фразы</button>
+        <button class="tab" data-section="quiz">🎯 Тесты</button>
+        <button class="tab" data-section="challenge">🏆 Челлендж</button>
+        <button class="tab" data-section="stats">📊 Статистика</button>
     </div>
 
-    <!-- Секция: Словарь -->
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 1: СЛОВАРЬ (Мои слова) -->
+    <!-- ============================================ -->
     <div id="vocab" class="section active">
         <h2>Мои слова</h2>
+        <input type="text" id="search" placeholder="Поиск: слово, перевод, транслит..."
+               oninput="filterVocab()"
+               style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--tg-theme-hint-color); margin-bottom:12px;">
         <div id="vocab-content" class="loading">Загрузка данных...</div>
     </div>
+    <!-- /vocab -->
 
-    <!-- Секция: Хангыль -->
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 2: ХАНГЫЛЬ (Алфавит) -->
+    <!-- ============================================ -->
     <div id="hangul" class="section">
         <h2>Алфавит хангыль</h2>
         <p style="color: var(--tg-theme-hint-color); font-size: 14px; margin-top: -8px;">
@@ -165,8 +670,23 @@
             <div class="hangul-grid" id="compound-vowels"></div>
         </div>
     </div>
+    <!-- /hangul -->
 
-    <!-- Секция: Правила чтения -->
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 3: КАРТОЧКИ (Режим повторения) -->
+    <!-- ============================================ -->
+    <div id="cards" class="section">
+        <h2>Режим карточек</h2>
+        <p style="color: var(--tg-theme-hint-color); font-size: 14px; margin-top: -8px;">
+            Нажмите на карточку, чтобы увидеть перевод
+        </p>
+        <div id="cards-content" class="loading">Загрузка...</div>
+    </div>
+    <!-- /cards -->
+
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 4: ПРАВИЛА ЧТЕНИЯ -->
+    <!-- ============================================ -->
     <div id="rules" class="section">
         <h2>Правила чтения</h2>
         <p style="color: var(--tg-theme-hint-color); font-size: 14px; margin-top: -8px;">
@@ -230,41 +750,122 @@
             </div>
         </div>
     </div>
+    <!-- /rules -->
 
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 5: ГРАММАТИКА -->
+    <!-- ============================================ -->
+    <div id="grammar" class="section">
+        <h2>Грамматика</h2>
+        <p style="color: var(--tg-theme-hint-color); font-size: 14px; margin-top: -8px;">
+            Основные грамматические конструкции
+        </p>
+        <div id="grammar-content"></div>
+    </div>
+    <!-- /grammar -->
+
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 6: ФРАЗЫ ДЛЯ ПУТЕШЕСТВИЙ -->
+    <!-- ============================================ -->
+    <div id="phrases" class="section">
+        <h2>Фразы для путешествий</h2>
+        <p style="color: var(--tg-theme-hint-color); font-size: 14px; margin-top: -8px;">
+            Полезные выражения в разных ситуациях
+        </p>
+        <div id="phrases-content"></div>
+    </div>
+    <!-- /phrases -->
+
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 7: ТЕСТЫ И КВИЗЫ -->
+    <!-- ============================================ -->
+    <div id="quiz" class="section">
+        <h2>Проверка знаний</h2>
+        <div id="quiz-content" class="loading">
+            <p style="text-align:center; margin-top: 40px; color: var(--tg-theme-hint-color);">
+                Нажмите кнопку, чтобы начать тест из 10 вопросов
+            </p>
+            <div style="text-align:center;">
+                <button class="quiz-start-btn" onclick="startQuiz()">Начать тест</button>
+            </div>
+        </div>
+    </div>
+    <!-- /quiz -->
+
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 8: ЕЖЕДНЕВНЫЙ ЧЕЛЛЕНДЖ -->
+    <!-- ============================================ -->
+    <div id="challenge" class="section">
+        <h2>Ежедневный челлендж</h2>
+        <div id="challenge-content" class="loading">Загрузка...</div>
+    </div>
+    <!-- /challenge -->
+
+    <!-- ============================================ -->
+    <!-- СЕКЦИЯ 9: СТАТИСТИКА ОБУЧЕНИЯ -->
+    <!-- ============================================ -->
+    <div id="stats" class="section">
+        <h2>Статистика обучения</h2>
+        <div id="stats-content" class="loading">Загрузка...</div>
+    </div>
+    <!-- /stats -->
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
+        // ===== ТЕМА =====
+        function applyTheme() {
+            const theme = tg.colorScheme || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            if (tg.themeParams) {
+                const p = tg.themeParams;
+                if (p.bg_color) document.documentElement.style.setProperty('--tg-theme-bg-color', p.bg_color);
+                if (p.text_color) document.documentElement.style.setProperty('--tg-theme-text-color', p.text_color);
+                if (p.hint_color) document.documentElement.style.setProperty('--tg-theme-hint-color', p.hint_color);
+                if (p.link_color) document.documentElement.style.setProperty('--tg-theme-link-color', p.link_color);
+                if (p.secondary_bg_color) document.documentElement.style.setProperty('--tg-theme-secondary-bg-color', p.secondary_bg_color);
+                if (p.button_color) document.documentElement.style.setProperty('--tg-theme-button-color', p.button_color);
+                if (p.button_text_color) document.documentElement.style.setProperty('--tg-theme-button-text-color', p.button_text_color);
+            }
+        }
+        applyTheme();
+        tg.onEvent('themeChanged', applyTheme);
+
         const userId = tg.initDataUnsafe?.user?.id || 9235360161;
         const API_URL = "https://sunday-bot-yg41.onrender.com";
 
+        // ===== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
+        let allVocabWords = [];   // для тестов и челленджа
+        let allWords = [];        // для поиска и рендера таблицы
+        let challengePoints = 0;
+        let challengeTasksCompleted = 0;
+        const DAILY_GOAL = 3;
+
         // ===== ДАННЫЕ ХАНГЫЛЯ =====
         const consonants = [
-            { symbol: 'ㄱ', name: 'киёк', sound: 'г/к' },
-            { symbol: 'ㄴ', name: 'ниын', sound: 'н' },
-            { symbol: 'ㄷ', name: 'тигыт', sound: 'д/т' },
-            { symbol: 'ㄹ', name: 'риыль', sound: 'р/л' },
-            { symbol: 'ㅁ', name: 'миым', sound: 'м' },
-            { symbol: 'ㅂ', name: 'пиып', sound: 'б/п' },
-            { symbol: 'ㅅ', name: 'сиот', sound: 'с' },
-            { symbol: 'ㅇ', name: 'иын', sound: 'нг/—' },
-            { symbol: 'ㅈ', name: 'чиыт', sound: 'ч/дж' },
-            { symbol: 'ㅊ', name: 'чхиыт', sound: 'чх' },
-            { symbol: 'ㅋ', name: 'кхиык', sound: 'кх' },
-            { symbol: 'ㅌ', name: 'тхиыт', sound: 'тх' },
-            { symbol: 'ㅍ', name: 'пхиып', sound: 'пх' },
-            { symbol: 'ㅎ', name: 'хиыт', sound: 'х' }
+            { symbol: 'ㄱ', name: 'киёк', sound: 'г/к', tts: '가' },
+            { symbol: 'ㄴ', name: 'ниын', sound: 'н', tts: '나' },
+            { symbol: 'ㄷ', name: 'тигыт', sound: 'д/т', tts: '다' },
+            { symbol: 'ㄹ', name: 'риыль', sound: 'р/л', tts: '라' },
+            { symbol: 'ㅁ', name: 'миым', sound: 'м', tts: '마' },
+            { symbol: 'ㅂ', name: 'пиып', sound: 'б/п', tts: '바' },
+            { symbol: 'ㅅ', name: 'сиот', sound: 'с', tts: '사' },
+            { symbol: 'ㅇ', name: 'иын', sound: 'нг/—', tts: '앙' },
+            { symbol: 'ㅈ', name: 'чиыт', sound: 'ч/дж', tts: '자' },
+            { symbol: 'ㅊ', name: 'чхиыт', sound: 'чх', tts: '차' },
+            { symbol: 'ㅋ', name: 'кхиык', sound: 'кх', tts: '카' },
+            { symbol: 'ㅌ', name: 'тхиыт', sound: 'тх', tts: '타' },
+            { symbol: 'ㅍ', name: 'пхиып', sound: 'пх', tts: '파' },
+            { symbol: 'ㅎ', name: 'хиыт', sound: 'х', tts: '하' }
         ];
-
         const doubleConsonants = [
-            { symbol: 'ㄲ', name: 'сангиёк', sound: 'кк' },
-            { symbol: 'ㄸ', name: 'ссандигыт', sound: 'тт' },
-            { symbol: 'ㅃ', name: 'ссанпиып', sound: 'пп' },
-            { symbol: 'ㅆ', name: 'ссансиот', sound: 'сс' },
-            { symbol: 'ㅉ', name: 'ссанчиыт', sound: 'чч' }
+            { symbol: 'ㄲ', name: 'сангиёк', sound: 'кк', tts: '까' },
+            { symbol: 'ㄸ', name: 'ссандигыт', sound: 'тт', tts: '따' },
+            { symbol: 'ㅃ', name: 'ссанпиып', sound: 'пп', tts: '빠' },
+            { symbol: 'ㅆ', name: 'ссансиот', sound: 'сс', tts: '싸' },
+            { symbol: 'ㅉ', name: 'ссанчиыт', sound: 'чч', tts: '짜' }
         ];
-
         const vowels = [
             { symbol: 'ㅏ', name: 'а', sound: 'а' },
             { symbol: 'ㅑ', name: 'я', sound: 'я' },
@@ -277,7 +878,6 @@
             { symbol: 'ㅡ', name: 'ы', sound: 'ы' },
             { symbol: 'ㅣ', name: 'и', sound: 'и' }
         ];
-
         const compoundVowels = [
             { symbol: 'ㅐ', name: 'э', sound: 'э' },
             { symbol: 'ㅒ', name: 'йе', sound: 'йе' },
@@ -292,24 +892,245 @@
             { symbol: 'ㅢ', name: 'ыи', sound: 'ыи' }
         ];
 
+        // ===== ГРАММАТИКА =====
+        const grammarTopics = [
+            {
+                title: "1. Частицы темы и подлежащего (은/는, 이/가)",
+                content: "В корейском языке есть две частицы, которые указывают на тему или подлежащее предложения. Выбор зависит от того, заканчивается ли слово на согласный или гласный.",
+                pattern: "Согласный + 은/는 | Гласный + 이/가",
+                examples: [
+                    { kr: "저는", ru: "я (тема)" },
+                    { kr: "학생은", ru: "студент (тема)" },
+                    { kr: "내가", ru: "я (подлежащее)" },
+                    { kr: "사과가", ru: "яблоко (подлежащее)" }
+                ],
+                note: "은/는 — для темы (о чём говорим), 이/가 — для подлежащего (кто делает действие)"
+            },
+            {
+                title: "2. Частица дополнения (을/를)",
+                content: "Указывает на прямое дополнение — объект, на который направлено действие.",
+                pattern: "Согласный + 을 | Гласный + 를",
+                examples: [
+                    { kr: "밥을", ru: "рис (ем)" },
+                    { kr: "물을", ru: "воду (пью)" },
+                    { kr: "사과를", ru: "яблоко (ем)" },
+                    { kr: "책을", ru: "книгу (читаю)" }
+                ],
+                note: "Аналог винительного падежа в русском"
+            },
+            {
+                title: "3. Спряжение глаголов (아/어요)",
+                content: "Вежливая форма настоящего времени. Окончание зависит от последней гласной основы глагола.",
+                pattern: "Гласные ㅏ, ㅗ + 아요 | Остальные + 어요 | 하다 → 해요",
+                examples: [
+                    { kr: "가다 → 가요", ru: "идти" },
+                    { kr: "먹다 → 먹어요", ru: "есть" },
+                    { kr: "하다 → 해요", ru: "делать" },
+                    { kr: "보다 → 봐요", ru: "смотреть" }
+                ],
+                note: "Самая распространённая форма вежливой речи"
+            },
+            {
+                title: "4. Прошедшее время (았/었어요)",
+                content: "Образуется добавлением окончаний прошедшего времени к основе глагола.",
+                pattern: "Гласные ㅏ, ㅗ + 았어요 | Остальные + 었어요 | 하다 → 했어요",
+                examples: [
+                    { kr: "갔다", ru: "пошёл" },
+                    { kr: "먹었어요", ru: "поел" },
+                    { kr: "했어요", ru: "сделал" },
+                    { kr: "봤어요", ru: "посмотрел" }
+                ],
+                note: "Аналог прошедшего времени в русском"
+            },
+            {
+                title: "5. Будущее время (ㄹ/을 거예요)",
+                content: "Выражает намерение или предположение о будущем действии.",
+                pattern: "Без пакчима + ㄹ 거예요 | С пакчимом + 을 거예요",
+                examples: [
+                    { kr: "갈 거예요", ru: "пойду" },
+                    { kr: "먹을 거예요", ru: "буду есть" },
+                    { kr: "할 거예요", ru: "буду делать" },
+                    { kr: "볼 거예요", ru: "буду смотреть" }
+                ],
+                note: "Также может выражать предположение: 'наверное, сделает'"
+            },
+            {
+                title: "6. Частица направления (에/에게)",
+                content: "Указывает на направление действия или адресата.",
+                pattern: "Место + 에 | Человек + 에게/한테",
+                examples: [
+                    { kr: "학교에", ru: "в школу" },
+                    { kr: "집에", ru: "домой" },
+                    { kr: "친구에게", ru: "другу" },
+                    { kr: "선생님께", ru: "учителю (вежливо)" }
+                ],
+                note: "에 — для мест, 에게/한테 — для людей"
+            },
+            {
+                title: "7. Частица инструмента (으로/로)",
+                content: "Указывает на инструмент, способ или направление.",
+                pattern: "С пакчимом + 으로 | Без пакчима + 로",
+                examples: [
+                    { kr: "칼로", ru: "ножом" },
+                    { kr: "버스로", ru: "на автобусе" },
+                    { kr: "한국어로", ru: "по-корейски" },
+                    { kr: "왼쪽으로", ru: "налево" }
+                ],
+                note: "Аналог творительного падежа"
+            },
+            {
+                title: "8. Отрицание (안/못)",
+                content: "Два способа отрицания: 안 — не делать (по желанию), 못 — не мочь (по обстоятельствам).",
+                pattern: "안 + глагол | глагол + 지 않다",
+                examples: [
+                    { kr: "안 먹어요", ru: "не ем" },
+                    { kr: "못 먹어요", ru: "не могу есть" },
+                    { kr: "안 가요", ru: "не иду" },
+                    { kr: "못 가요", ru: "не могу идти" }
+                ],
+                note: "안 — субъективное отрицание, 못 — объективное"
+            }
+        ];
 
-        // ===== КЭШ АУДИО =====
+        // ===== ФРАЗЫ =====
+        const phraseCategories = [
+            {
+                title: "👋 Приветствия и вежливость",
+                phrases: [
+                    { kr: "안녕하세요", roman: "аннёнхасэё", ru: "Здравствуйте" },
+                    { kr: "감사합니다", roman: "камсахамнида", ru: "Спасибо" },
+                    { kr: "죄송합니다", roman: "чвэсонхамнида", ru: "Извините" },
+                    { kr: "안녕히 가세요", roman: "аннёнхи касэё", ru: "До свидания (уходящему)" },
+                    { kr: "안녕히 계세요", roman: "аннёнхи кесэё", ru: "До свидания (остающемуся)" },
+                    { kr: "네", roman: "нэ", ru: "Да" },
+                    { kr: "아니요", roman: "аниё", ru: "Нет" }
+                ]
+            },
+            {
+                title: "🍽️ В ресторане",
+                phrases: [
+                    { kr: "이거 주세요", roman: "иго чусэё", ru: "Дайте это, пожалуйста" },
+                    { kr: "메뉴 주세요", roman: "меню чусэё", ru: "Меню, пожалуйста" },
+                    { kr: "물 주세요", roman: "муль чусэё", ru: "Воды, пожалуйста" },
+                    { kr: "계산서 주세요", roman: "кесансо чусэё", ru: "Счёт, пожалуйста" },
+                    { kr: "맛있어요", roman: "масиссоё", ru: "Вкусно" },
+                    { kr: "예약했어요", roman: "йеякхэссоё", ru: "У меня бронь" }
+                ]
+            },
+            {
+                title: "🚌 Транспорт",
+                phrases: [
+                    { kr: "여기서 내려주세요", roman: "ёгисо нэрёджусэё", ru: "Остановите здесь" },
+                    { kr: "택시 불러주세요", roman: "тхакси пульлёджусэё", ru: "Вызовите такси" },
+                    { kr: "여기가 어디예요?", roman: "ёгига одиэё?", ru: "Где это?" },
+                    { kr: "역이 어디예요?", roman: "ёги одиэё?", ru: "Где станция?" },
+                    { kr: "얼마예요?", roman: "ольмаэё?", ru: "Сколько стоит?" },
+                    { kr: "카드 돼요?", roman: "кхады твэё?", ru: "Можно картой?" }
+                ]
+            },
+            {
+                title: "🏨 Отель",
+                phrases: [
+                    { kr: "예약했어요", roman: "йеякхэссоё", ru: "У меня бронь" },
+                    { kr: "체크인 할게요", roman: "чхекхин хальгеё", ru: "Я на регистрацию" },
+                    { kr: "와이파이 비밀번호 뭐예요?", roman: "вапхаи бимильбонхо мвоэё?", ru: "Какой пароль от Wi-Fi?" },
+                    { kr: "조식 포함이에요?", roman: "чосик пхомнимидэё?", ru: "Завтрак включён?" },
+                    { kr: "수건 더 주세요", roman: "сугон то чусэё", ru: "Дайте ещё полотенце" }
+                ]
+            },
+            {
+                title: "🛍️ Покупки",
+                phrases: [
+                    { kr: "이거 얼마예요?", roman: "иго ольмаэё?", ru: "Сколько это стоит?" },
+                    { kr: "좀 깎아 주세요", roman: "чом ккакка чусэё", ru: "Сделайте скидку" },
+                    { kr: "이거 있어요?", roman: "иго иссоё?", ru: "Это есть?" },
+                    { kr: "다른 거 있어요?", roman: "тарын ко иссоё?", ru: "Есть другое?" },
+                    { kr: "봉투 주세요", roman: "понгтху чусэё", ru: "Пакет, пожалуйста" }
+                ]
+            },
+            {
+                title: "🆘 Экстренные ситуации",
+                phrases: [
+                    { kr: "도와주세요!", roman: "товаджусэё!", ru: "Помогите!" },
+                    { kr: "경찰 불러주세요", roman: "кёнчхаль пульлёджусэё", ru: "Вызовите полицию" },
+                    { kr: "병원이 어디예요?", roman: "пёнвони одиэё?", ru: "Где больница?" },
+                    { kr: "아파요", roman: "апаё", ru: "Мне плохо" },
+                    { kr: "러시아 대사관 어디예요?", roman: "росиа тэсагван одиэё?", ru: "Где посольство России?" }
+                ]
+            },
+            {
+                title: "🗣️ Знакомство",
+                phrases: [
+                    { kr: "처음 뵙겠습니다", roman: "чодым пвэпкетымнида", ru: "Приятно познакомиться" },
+                    { kr: "이름이 뭐예요?", roman: "ырыми мвоэё?", ru: "Как вас зовут?" },
+                    { kr: "제 이름은...", roman: "че ырым ын...", ru: "Меня зовут..." },
+                    { kr: "러시아에서 왔어요", roman: "росиэсо вассоё", ru: "Я из России" },
+                    { kr: "한국어를 조금 해요", roman: "хангуго рыл чогым хэё", ru: "Я немного говорю по-корейски" }
+                ]
+            }
+        ];
+
+        // ===== АУДИО =====
         const audioCache = {};
 
-        async function getAudioBlob(symbol) {
-            if (audioCache[symbol]) return audioCache[symbol];
-
-            const url = `${API_URL}/api/tts?text=${encodeURIComponent(symbol)}`;
+        async function getAudioBlob(text) {
+            if (audioCache[text]) return audioCache[text];
+            const url = `${API_URL}/api/tts?text=${encodeURIComponent(text)}`;
             const res = await fetch(url, {
                 headers: { 'ngrok-skip-browser-warning': 'true' }
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const blob = await res.blob();
-            audioCache[symbol] = URL.createObjectURL(blob);
-            return audioCache[symbol];
+            audioCache[text] = URL.createObjectURL(blob);
+            return audioCache[text];
         }
 
-        // ===== РЕНДЕР ХАНГЫЛЯ С ОЗВУЧКОЙ =====
+        function playFromCache(text) {
+            const url = audioCache[text];
+            if (!url) return false;
+            const audio = new Audio(url);
+            audio.play().catch(e => console.error('play blocked:', e));
+            return true;
+        }
+
+        async function preloadHangulAudio() {
+            const all = [...consonants, ...doubleConsonants, ...vowels, ...compoundVowels];
+            for (const item of all) {
+                const text = item.tts || item.symbol;
+                try { await getAudioBlob(text); } catch (e) { /* skip */ }
+            }
+            console.log('Аудио хангыля предзагружено:', Object.keys(audioCache).length);
+        }
+
+        // ===== УТИЛИТЫ =====
+        function extractKorean(text) {
+            const m = (text || '').match(/[가-힣]+/);
+            return m ? m[0] : '';
+        }
+
+        const INITIALS = ['g','kk','n','d','tt','r','m','b','pp','s','ss','','j','jj','ch','k','t','p','h'];
+        const MEDIALS  = ['a','ae','ya','yae','eo','e','yeo','ye','o','wa','wae','oe','yo','u','wo','we','wi','yu','eu','ui','i'];
+        const FINALS   = ['','k','kk','k','n','n','n','t','l','k','m','l','l','l','p','l','m','p','s','t','t','ng','t','t','t','t','p','t'];
+
+        function romanize(word) {
+            let out = '';
+            for (const ch of word) {
+                const code = ch.codePointAt(0);
+                if (code < 0xAC00 || code > 0xD7A3) { out += ch; continue; }
+                const idx = code - 0xAC00;
+                const ini = Math.floor(idx / 588);
+                const med = Math.floor((idx % 588) / 28);
+                const fin = idx % 28;
+                out += INITIALS[ini] + MEDIALS[med] + FINALS[fin];
+            }
+            return out;
+        }
+
+        function norm(s) {
+            return (s || '').toLowerCase().replace(/ё/g, 'е').trim();
+        }
+
+        // ===== РЕНДЕР ХАНГЫЛЯ =====
         function renderHangul() {
             const groups = [
                 ['consonants', consonants],
@@ -318,7 +1139,6 @@
                 ['compound-vowels', compoundVowels]
             ];
 
-            // Inline-подсказка под карточками
             let hint = document.getElementById('hangul-hint');
             if (!hint) {
                 hint = document.createElement('div');
@@ -330,7 +1150,6 @@
             groups.forEach(([containerId, items]) => {
                 const container = document.getElementById(containerId);
                 container.innerHTML = '';
-
                 items.forEach(item => {
                     const card = document.createElement('div');
                     card.className = 'hangul-card';
@@ -339,41 +1158,570 @@
                         <span class="name">${item.name}</span>
                         <span class="sound">[${item.sound}]</span>
                     `;
-
-                    card.onclick = async () => {
-                        // 1. Показываем информацию inline (НЕ через tg.showAlert!)
-                        hint.innerHTML = `<b style="font-size:20px">${item.symbol}</b> — ${item.name} <span style="color:var(--tg-theme-link-color)">[${item.sound}]</span>`;
-
-                        // 2. Визуальная обратная связь
-                        card.style.opacity = '0.5';
-
-                        try {
-                            // 3. Получаем URL (из кэша или скачиваем)
-                            const audioUrl = await getAudioBlob(item.symbol);
-
-                            // 4. Воспроизводим
-                            const audio = new Audio(audioUrl);
-                            await audio.play();
-                        } catch (error) {
-                            console.error('TTS error:', error);
-                            hint.innerHTML = `⚠️ Не удалось загрузить звук (${error.message})`;
-                        } finally {
-                            card.style.opacity = '1';
+                    card.onclick = () => {
+                        const ttsText = item.tts || item.symbol;
+                        hint.innerHTML = `<b style="font-size:20px">${item.symbol}</b> — ${item.name} ` +
+                            `<span style="color:var(--tg-theme-link-color)">[${item.sound}]</span> ` +
+                            `<span style="opacity:.7">🔊 ${ttsText} (${romanize(ttsText)})</span>`;
+                        if (!playFromCache(ttsText)) {
+                            getAudioBlob(ttsText).then(() => playFromCache(ttsText));
                         }
                     };
-
                     container.appendChild(card);
                 });
             });
-
-            // 5. Предзагружаем первые 5 букв при открытии таба —
-            //    чтобы при первом клике не было задержки
-            setTimeout(() => {
-                consonants.slice(0, 5).forEach(c => getAudioBlob(c.symbol).catch(() => {}));
-            }, 500);
         }
 
-        // ===== ПЕРЕКЛЮЧЕНИЕ ТАБОВ ===== 
+        // ===== РЕНДЕР ГРАММАТИКИ =====
+        function renderGrammar() {
+            const container = document.getElementById('grammar-content');
+            container.innerHTML = '';
+
+            grammarTopics.forEach(topic => {
+                const card = document.createElement('div');
+                card.className = 'grammar-card';
+
+                let examplesHtml = topic.examples.map(ex => {
+                    const ttsText = ex.kr.split('→')[0].trim();
+                    return `
+                        <div class="example-row">
+                            <span class="kr">${ex.kr}</span>
+                            <span>— ${ex.ru}</span>
+                            <button class="speak-btn" data-text="${ttsText}">🔊</button>
+                        </div>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <h4>${topic.title}</h4>
+                    <p>${topic.content}</p>
+                    <div class="pattern">${topic.pattern}</div>
+                    <div class="example">${examplesHtml}</div>
+                    ${topic.note ? `<div class="note">💡 ${topic.note}</div>` : ''}
+                `;
+
+                container.appendChild(card);
+            });
+
+            container.querySelectorAll('.speak-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const text = btn.dataset.text;
+                    btn.disabled = true;
+                    try {
+                        if (!playFromCache(text)) {
+                            await getAudioBlob(text);
+                            playFromCache(text);
+                        }
+                    } catch (err) {
+                        console.error('TTS error:', err);
+                    } finally {
+                        btn.disabled = false;
+                    }
+                };
+            });
+        }
+
+        // ===== РЕНДЕР ФРАЗ =====
+        function renderPhrases() {
+            const container = document.getElementById('phrases-content');
+            container.innerHTML = '';
+
+            phraseCategories.forEach(category => {
+                const catDiv = document.createElement('div');
+                catDiv.className = 'phrase-category';
+
+                let phrasesHtml = category.phrases.map(p => `
+                    <div class="phrase-card">
+                        <div class="phrase-text">
+                            <div class="phrase-kr">${p.kr}</div>
+                            <div class="phrase-roman">[${p.roman}]</div>
+                            <div class="phrase-ru">${p.ru}</div>
+                        </div>
+                        <button class="speak-btn phrase-speak" data-text="${p.kr}">🔊</button>
+                    </div>
+                `).join('');
+
+                catDiv.innerHTML = `<h3>${category.title}</h3>${phrasesHtml}`;
+                container.appendChild(catDiv);
+            });
+
+            container.querySelectorAll('.speak-btn').forEach(btn => {
+                btn.onclick = async () => {
+                    const text = btn.dataset.text;
+                    btn.disabled = true;
+                    try {
+                        if (!playFromCache(text)) {
+                            await getAudioBlob(text);
+                            playFromCache(text);
+                        }
+                    } catch (err) {
+                        console.error('TTS error:', err);
+                    } finally {
+                        btn.disabled = false;
+                    }
+                };
+            });
+        }
+
+        // ===== СЛОВАРЬ =====
+        async function loadVocabulary() {
+            try {
+                const response = await fetch(`${API_URL}/api/vocabulary?user_id=${userId}`, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                });
+                if (!response.ok) throw new Error("Ошибка сети");
+                const words = await response.json();
+                allVocabWords = words;
+                allWords = words;
+                renderVocabTable(allWords);
+            } catch (error) {
+                document.getElementById('vocab-content').innerHTML =
+                    `<p class="error">Ошибка загрузки.<br><small>${error.message}</small></p>`;
+            }
+        }
+
+        function renderVocabTable(list) {
+            const container = document.getElementById('vocab-content');
+            if (!list || list.length === 0) {
+                container.innerHTML = '<p class="empty">Ничего не найдено 🔍</p>';
+                return;
+            }
+            let html = `<table><tr><th>Слово</th><th>Перевод</th><th>Повтор</th><th></th></tr>`;
+            list.forEach(w => {
+                const dateStr = w.next_review
+                    ? w.next_review.split(/[T ]/)[0].split('-').reverse().join('.') : '—';
+                const korean = extractKorean(w.word) || extractKorean(w.translation);
+                html += `<tr>
+                    <td class="kr-word">${w.word}<br><span class="roman">${romanize(korean || w.word)}</span></td>
+                    <td>${w.translation}</td>
+                    <td class="date">${dateStr}</td>
+                    <td>${korean ? `<button class="speak-btn" data-word="${korean}">🔊</button>` : ''}</td>
+                </tr>`;
+            });
+            html += `</table>`;
+            container.innerHTML = html;
+        }
+
+        function filterVocab() {
+            const q = norm(document.getElementById('search').value);
+            if (!q) { renderVocabTable(allWords); return; }
+            const filtered = allWords.filter(w => {
+                const korean = extractKorean(w.word) || extractKorean(w.translation);
+                return norm(w.word).includes(q) ||
+                       norm(w.translation).includes(q) ||
+                       norm(korean).includes(q) ||
+                       norm(romanize(korean || w.word)).includes(q);
+            });
+            renderVocabTable(filtered);
+        }
+
+        // ===== КАРТОЧКИ =====
+        let currentCards = [];
+        let currentCardIndex = 0;
+
+        async function loadCards() {
+            try {
+                const response = await fetch(`${API_URL}/api/due-words?user_id=${userId}`, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                });
+                if (!response.ok) throw new Error("Ошибка сети");
+                currentCards = await response.json();
+
+                const container = document.getElementById('cards-content');
+
+                if (currentCards.length === 0) {
+                    container.innerHTML = `
+                        <div class="cards-empty">
+                            <div class="emoji">🎉</div>
+                            <p>На сегодня всё!</p>
+                            <p style="font-size: 13px; margin-top: 8px;">Нет слов для повторения</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                currentCardIndex = 0;
+                renderCard();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('cards-content').innerHTML =
+                    `<p class="error">Ошибка загрузки.<br><small>${error.message}</small></p>`;
+            }
+        }
+
+        function renderCard() {
+            const container = document.getElementById('cards-content');
+            const card = currentCards[currentCardIndex];
+            const korean = extractKorean(card.word) || extractKorean(card.translation);
+            const roman = romanize(korean || card.word);
+
+            container.innerHTML = `
+                <div class="cards-progress">
+                    Карточка ${currentCardIndex + 1} из ${currentCards.length}
+                </div>
+                <div class="cards-container">
+                    <div class="flashcard-wrapper">
+                        <div class="flashcard" id="flashcard">
+                            <div class="flashcard-face flashcard-front">
+                                <div class="flashcard-word">${card.word}</div>
+                                <div class="flashcard-roman">${roman}</div>
+                                <div class="flashcard-hint">Нажмите, чтобы увидеть перевод</div>
+                            </div>
+                            <div class="flashcard-face flashcard-back">
+                                <div class="flashcard-translation">${card.translation}</div>
+                                <div class="flashcard-hint">Знаете это слово?</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-controls">
+                        <button class="card-btn wrong" onclick="markCard(false)">❌ Не знаю</button>
+                        <button class="card-btn correct" onclick="markCard(true)">✅ Знаю</button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('flashcard').onclick = () => {
+                document.getElementById('flashcard').classList.toggle('flipped');
+            };
+        }
+
+        async function markCard(isCorrect) {
+            const card = currentCards[currentCardIndex];
+            try {
+                await fetch(`${API_URL}/api/update-srs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: userId,
+                        word_id: card.id,
+                        is_correct: isCorrect
+                    })
+                });
+
+                currentCardIndex++;
+                if (currentCardIndex < currentCards.length) {
+                    renderCard();
+                } else {
+                    document.getElementById('cards-content').innerHTML = `
+                        <div class="cards-empty">
+                            <div class="emoji">🎉</div>
+                            <p>Отлично! Все карточки пройдены</p>
+                            <p style="font-size: 13px; margin-top: 8px;">Возвращайтесь завтра для повторения</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error updating SRS:', error);
+            }
+        }
+
+        // ===== СТАТИСТИКА =====
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/api/stats?user_id=${userId}`, {
+                    headers: { 'ngrok-skip-browser-warning': 'true' }
+                });
+                if (!response.ok) throw new Error("Ошибка сети");
+                const stats = await response.json();
+
+                const container = document.getElementById('stats-content');
+                container.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="value">${stats.total}</span>
+                            <span class="label">Всего слов</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="value">${stats.due_today}</span>
+                            <span class="label">Повторить сегодня</span>
+                        </div>
+                        <div class="stat-card streak">
+                            <span class="value">${stats.streak} 🔥</span>
+                            <span class="label">Дней подряд</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="value">${Math.min(100, Math.round((stats.total / 100) * 100))}%</span>
+                            <span class="label">Прогресс (цель: 100)</span>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Прогресс за неделю</h3>
+                        <div class="chart" id="weekly-chart"></div>
+                    </div>
+                `;
+
+                const chart = document.getElementById('weekly-chart');
+                const maxCount = Math.max(...stats.weekly.map(d => d.count), 1);
+                stats.weekly.forEach(day => {
+                    const height = (day.count / maxCount) * 100;
+                    const bar = document.createElement('div');
+                    bar.className = 'chart-bar';
+                    bar.style.height = `${Math.max(height, 4)}%`;
+                    bar.innerHTML = `
+                        <span class="count">${day.count}</span>
+                        <span class="day">${day.day}</span>
+                    `;
+                    chart.appendChild(bar);
+                });
+            } catch (error) {
+                console.error(error);
+                document.getElementById('stats-content').innerHTML =
+                    `<p class="error">Ошибка загрузки статистики.<br><small>${error.message}</small></p>`;
+            }
+        }
+
+        // ===== ТЕСТЫ =====
+        let quizPool = [];
+        let currentQuizIndex = 0;
+        let quizScore = 0;
+        let isAnswering = false;
+
+        function buildQuizPool() {
+            let pool = [];
+            phraseCategories.forEach(cat => {
+                cat.phrases.forEach(p => {
+                    pool.push({ q: p.kr, a: p.ru, type: 'phrase' });
+                });
+            });
+            allVocabWords.forEach(w => {
+                let kr = extractKorean(w.word) || extractKorean(w.translation);
+                if (kr && w.translation) {
+                    pool.push({ q: kr, a: w.translation, type: 'vocab' });
+                }
+            });
+            return pool.sort(() => Math.random() - 0.5);
+        }
+
+        function startQuiz() {
+            quizPool = buildQuizPool();
+            if (quizPool.length < 4) {
+                document.getElementById('quiz-content').innerHTML = `
+                    <p class="error" style="margin-top:40px;">Недостаточно слов для теста.<br>Добавьте хотя бы 4 слова в словарь!</p>
+                `;
+                return;
+            }
+            quizPool = quizPool.slice(0, 10);
+            currentQuizIndex = 0;
+            quizScore = 0;
+            isAnswering = false;
+            renderQuizQuestion();
+        }
+
+        function renderQuizQuestion() {
+            const container = document.getElementById('quiz-content');
+            const item = quizPool[currentQuizIndex];
+            const progress = ((currentQuizIndex) / quizPool.length) * 100;
+
+            let options = [item.a];
+            let allAnswers = quizPool.map(p => p.a).filter(a => a !== item.a);
+            allAnswers.sort(() => Math.random() - 0.5);
+            options.push(...allAnswers.slice(0, 3));
+            options.sort(() => Math.random() - 0.5);
+
+            let optionsHtml = options.map(opt => `
+                <button class="quiz-option" onclick="checkAnswer(this, '${opt.replace(/'/g, "\\'")}', '${item.a.replace(/'/g, "\\'")}')">
+                    ${opt}
+                </button>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="quiz-container">
+                    <div class="quiz-progress">
+                        <div class="quiz-progress-bar" style="width: ${progress}%"></div>
+                    </div>
+                    <div class="quiz-question">${item.q}</div>
+                    <div class="quiz-hint">Выберите правильный перевод</div>
+                    <div class="quiz-options">${optionsHtml}</div>
+                </div>
+            `;
+        }
+
+        function checkAnswer(btn, selected, correct) {
+            if (isAnswering) return;
+            isAnswering = true;
+
+            const allBtns = document.querySelectorAll('.quiz-option');
+
+            if (selected === correct) {
+                btn.classList.add('correct');
+                quizScore++;
+            } else {
+                btn.classList.add('wrong');
+                allBtns.forEach(b => {
+                    if (b.textContent.trim() === correct) b.classList.add('correct');
+                });
+            }
+
+            allBtns.forEach(b => b.disabled = true);
+
+            setTimeout(() => {
+                currentQuizIndex++;
+                isAnswering = false;
+                if (currentQuizIndex < quizPool.length) {
+                    renderQuizQuestion();
+                } else {
+                    showQuizResults();
+                }
+            }, 1200);
+        }
+
+        function showQuizResults() {
+            const container = document.getElementById('quiz-content');
+            const percent = Math.round((quizScore / quizPool.length) * 100);
+            let message = '';
+
+            if (percent === 100) message = '🏆 Идеально! Вы мастер!';
+            else if (percent >= 80) message = '🔥 Отличный результат!';
+            else if (percent >= 60) message = '👍 Хорошо, но можно лучше';
+            else message = '📚 Стоит повторить материал';
+
+            container.innerHTML = `
+                <div class="quiz-result">
+                    <h3>Тест завершён!</h3>
+                    <div class="score">${quizScore} / ${quizPool.length}</div>
+                    <div class="message">${message} (${percent}%)</div>
+                    <button class="quiz-restart-btn" onclick="startQuiz()">Пройти ещё раз</button>
+                </div>
+            `;
+        }
+
+        // ===== ЧЕЛЛЕНДЖ =====
+        const challengeTasks = [
+            { type: 'translate', text: 'Переведите слово', getWord: () => {
+                if (allVocabWords.length === 0) return null;
+                const w = allVocabWords[Math.floor(Math.random() * allVocabWords.length)];
+                return { q: w.word, a: w.translation };
+            }},
+            { type: 'phrase', text: 'Что означает эта фраза?', getWord: () => {
+                const allPhrases = phraseCategories.flatMap(c => c.phrases);
+                const p = allPhrases[Math.floor(Math.random() * allPhrases.length)];
+                return { q: p.kr, a: p.ru };
+            }},
+            { type: 'hangul', text: 'Как читается этот слог?', getWord: () => {
+                const allHangul = [...consonants, ...doubleConsonants];
+                const h = allHangul[Math.floor(Math.random() * allHangul.length)];
+                return { q: h.tts, a: h.sound };
+            }}
+        ];
+
+        let currentChallengeTask = null;
+
+        function loadChallenge() {
+            const today = new Date().toDateString();
+            const saved = localStorage.getItem('challenge_progress');
+
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (data.date === today) {
+                    challengePoints = data.points || 0;
+                    challengeTasksCompleted = data.completed || 0;
+                } else {
+                    challengePoints = 0;
+                    challengeTasksCompleted = 0;
+                }
+            }
+
+            renderChallenge();
+        }
+
+        function renderChallenge() {
+            const container = document.getElementById('challenge-content');
+            const progress = (challengeTasksCompleted / DAILY_GOAL) * 100;
+
+            if (challengeTasksCompleted >= DAILY_GOAL) {
+                container.innerHTML = `
+                    <div class="challenge-complete">
+                        <div class="emoji">🎉</div>
+                        <h3>Цель выполнена!</h3>
+                        <p>Вы выполнили все задания на сегодня</p>
+                        <div class="challenge-reward">
+                            <div class="points">+${challengePoints} очков</div>
+                            <div style="font-size:13px; margin-top:4px;">Продолжайте серию! 🔥</div>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const taskType = challengeTasks[Math.floor(Math.random() * challengeTasks.length)];
+            const word = taskType.getWord();
+
+            if (!word) {
+                container.innerHTML = `<p class="error">Недостаточно данных для задания. Добавьте слова в словарь!</p>`;
+                return;
+            }
+
+            currentChallengeTask = { ...word, type: taskType.type };
+
+            container.innerHTML = `
+                <div class="challenge-widget">
+                    <div class="challenge-header">
+                        <div class="challenge-title">🎯 Цель на сегодня</div>
+                        <div class="challenge-points">⭐ ${challengePoints} очков</div>
+                    </div>
+                    <div class="challenge-progress">
+                        <div class="challenge-progress-bar" style="width: ${progress}%"></div>
+                    </div>
+                    <div style="font-size:13px; opacity:0.9; margin-bottom:16px;">
+                        Выполнено: ${challengeTasksCompleted} / ${DAILY_GOAL}
+                    </div>
+                    <div class="challenge-task">
+                        <div class="challenge-task-label">${taskType.text}</div>
+                        <div class="challenge-task-text">${word.q}</div>
+                        <div class="challenge-task-hint">Нажмите кнопку ниже, чтобы увидеть ответ</div>
+                    </div>
+                    <button class="challenge-btn" onclick="completeChallengeTask()">
+                        ✅ Выполнить задание (+10 очков)
+                    </button>
+                </div>
+            `;
+        }
+
+        function completeChallengeTask() {
+            if (!currentChallengeTask) return;
+
+            challengeTasksCompleted++;
+            challengePoints += 10;
+
+            const today = new Date().toDateString();
+            localStorage.setItem('challenge_progress', JSON.stringify({
+                date: today,
+                points: challengePoints,
+                completed: challengeTasksCompleted
+            }));
+
+            const container = document.getElementById('challenge-content');
+            container.innerHTML = `
+                <div class="challenge-widget">
+                    <div class="challenge-header">
+                        <div class="challenge-title">✅ Правильно!</div>
+                        <div class="challenge-points">⭐ ${challengePoints} очков</div>
+                    </div>
+                    <div class="challenge-progress">
+                        <div class="challenge-progress-bar" style="width: ${(challengeTasksCompleted / DAILY_GOAL) * 100}%"></div>
+                    </div>
+                    <div style="font-size:13px; opacity:0.9; margin-bottom:16px;">
+                        Выполнено: ${challengeTasksCompleted} / ${DAILY_GOAL}
+                    </div>
+                    <div class="challenge-task">
+                        <div class="challenge-task-label">Ответ:</div>
+                        <div class="challenge-task-text">${currentChallengeTask.a}</div>
+                    </div>
+                    ${challengeTasksCompleted >= DAILY_GOAL ? `
+                        <div class="challenge-reward">
+                            <div class="points">🎉 Цель выполнена!</div>
+                            <div style="font-size:13px; margin-top:4px;">+${challengePoints} очков за сегодня</div>
+                        </div>
+                    ` : `
+                        <button class="challenge-btn" onclick="renderChallenge()">
+                            Следующее задание →
+                        </button>
+                    `}
+                </div>
+            `;
+        }
+
+        // ===== ПЕРЕКЛЮЧЕНИЕ ТАБОВ =====
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -383,43 +1731,45 @@
             });
         });
 
-        // ===== ЗАГРУЗКА СЛОВАРЯ =====
-        async function loadVocabulary() {
-            try {
-                const response = await fetch(`${API_URL}/api/vocabulary?user_id=${userId}`, {
-                    headers: { 'ngrok-skip-browser-warning': 'true' }
-                });
-                if (!response.ok) throw new Error("Ошибка сети");
-                const words = await response.json();
+        // ===== СВАЙПЫ =====
+        let touchStartX = 0;
+        let touchStartY = 0;
 
-                const container = document.getElementById('vocab-content');
-                if (words.length === 0) {
-                    container.innerHTML = '<p class="empty">Словарь пуст. Добавьте слова в чате с ботом!</p>';
-                    return;
+        document.addEventListener('touchstart', e => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        document.addEventListener('touchend', e => {
+            const diffX = touchStartX - e.changedTouches[0].clientX;
+            const diffY = touchStartY - e.changedTouches[0].clientY;
+
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                const tabs = document.querySelectorAll('.tab');
+                const current = document.querySelector('.tab.active');
+                const idx = Array.from(tabs).indexOf(current);
+                const next = diffX > 0 ? idx + 1 : idx - 1;
+
+                if (next >= 0 && next < tabs.length) {
+                    const nextSection = document.getElementById(tabs[next].dataset.section);
+                    nextSection.classList.add(diffX > 0 ? 'slide-left' : 'slide-right');
+                    tabs[next].click();
+                    setTimeout(() => {
+                        nextSection.classList.remove('slide-left', 'slide-right');
+                    }, 300);
                 }
-
-                let html = `<table>
-                    <tr><th>Слово</th><th>Перевод</th><th>Повтор</th></tr>`;
-                words.forEach(w => {
-                    const dateStr = w.next_review ? w.next_review.split('T')[0].split('-').reverse().join('.') : '—';
-                    html += `<tr>
-                        <td class="kr-word">${w.word}</td>
-                        <td>${w.translation}</td>
-                        <td class="date">${dateStr}</td>
-                    </tr>`;
-                });
-                html += `</table>`;
-                container.innerHTML = html;
-            } catch (error) {
-                console.error(error);
-                document.getElementById('vocab-content').innerHTML =
-                    `<p class="error">Ошибка загрузки.<br><small>${error.message}</small></p>`;
             }
-        }
+        }, { passive: true });
 
-        // ===== ИНИЦИАЛИЗАЦИЯ =====
+        // ===== СТАРТ =====
         renderHangul();
+        renderGrammar();
+        renderPhrases();
         loadVocabulary();
+        loadCards();
+        loadStats();
+        loadChallenge();
+        preloadHangulAudio();
     </script>
 </body>
 </html>
